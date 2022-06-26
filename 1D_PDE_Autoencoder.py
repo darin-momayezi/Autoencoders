@@ -5,21 +5,20 @@ from sklearn import preprocessing
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from OneDcoarsegrid import T, t, X, x, dx, k, q, F
-import torch.nn.functional as F
+from OneDcoarsegrid import T, t, X, x, dx, k, q, F, a, b
 import scipy.io as sio
-from sklearn.manifold import TSNE
 
 
 ##### Parameters #####
 
-input_size = 100  # Number of spatial grid points from OneDcoarsegrid
+input_size = x  # Number of spatial grid points from OneDcoarsegrid
 hidden1 = int(input_size/10)
 latent_dim = 4
 epochs = 200
-lr = 0.001  # learning rate
+lr = 0.001  # Learning rate
 batch_size = 30
-iterations = 1  # run autoencoder _ times
+iterations = 4  # Run autoencoder _ times
+shuffle = False  # Don't shuffle temporally sequenced data
 
 
 
@@ -27,12 +26,23 @@ iterations = 1  # run autoencoder _ times
 
 df = pd.DataFrame(np.load('/Users/darinmomayezi/Downloads/NSE2D[71]/1Dcoarsegrid.npy'))
 # df = pd.DataFrame(sio.loadmat('/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/Programs/1DPDEs/Xdmd.mat')['Xdmd']).T
-# df = np.dot(df1.T, df2)
+# df2 = pd.DataFrame(sio.loadmat('/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/Programs/1DPDEs/Phi.mat')['Phi'])
+# df = np.dot(df1, df2.T)
 
-train_data = TensorDataset(torch.Tensor(preprocessing.normalize(df[int(0.7*df.shape[0]):])))
-eval_data = TensorDataset(torch.Tensor(preprocessing.normalize(df[:int(0.7*df.shape[0])])))
-train_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle=False)
-eval_loader = DataLoader(dataset=eval_data, batch_size=batch_size, shuffle=False)
+
+# df_train = preprocessing.normalize(df[:int(0.7*df.shape[0])])
+# df_eval = preprocessing.normalize(df[int(0.7*df.shape[0]):])
+# dmd_train = preprocessing.normalize(dmd[:int(0.7*dmd.shape[0])])
+# dmd_eval = preprocessing.normalize(dmd[int(0.7*dmd.shape[0]):])
+# train_data = TensorDataset(torch.Tensor(np.concatenate([df_train, dmd_train], axis=1)))
+# eval_data = TensorDataset(torch.Tensor(np.concatenate([df_eval, dmd_eval], axis=1)))
+
+
+
+train_data = TensorDataset(torch.Tensor(preprocessing.normalize(df[:int(0.7*df.shape[0])])))
+eval_data = TensorDataset(torch.Tensor(preprocessing.normalize(df[int(0.7*df.shape[0]):])))
+train_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle=shuffle)
+eval_loader = DataLoader(dataset=eval_data, batch_size=batch_size, shuffle=shuffle)
 
 
 
@@ -44,12 +54,13 @@ def autoencoder():
         def __init__(self):
             super().__init__()
             
+            
             self.encoder = nn.Sequential(nn.Linear(input_size, hidden1, bias=True, dtype=torch.float32),
-                                         nn.Sigmoid(),
+                                         nn.ReLU(),
                                          nn.Linear(hidden1, latent_dim, bias=True, dtype=torch.float32))
             
             self.decoder = nn.Sequential(nn.Linear(latent_dim, hidden1, bias=True, dtype=torch.float32),
-                                         nn.Sigmoid(),
+                                         nn.ReLU(),
                                          nn.Linear(hidden1, input_size, bias=True, dtype=torch.float32))
             
             # torch.nn.init.uniform_(self.encoder[0].weight.data, 0.0001, 0.1)
@@ -67,7 +78,9 @@ def autoencoder():
         
     model = Autoencoder()
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.0001)
+    
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[epochs/2], gamma=0.1)
     
     
     train_loss = []
@@ -81,7 +94,7 @@ def autoencoder():
         for i, x in enumerate(eval_loader):
             input_eval = torch.Tensor(x[0][0])
             recone = model(input_eval)
-            losse = criterion(input_eval, recone)
+            losse = criterion(recone, input_eval)
             running_eval_loss += losse.item()
         eval_loss.append(running_eval_loss / len(eval_loader))
         print(f"Evaluation Loss: {round(running_eval_loss / len(eval_loader), 20), latent_dim}")
@@ -104,11 +117,12 @@ def autoencoder():
         for i, y in enumerate(train_loader):
             input_train = torch.Tensor(y[0][0])
             recont = model(input_train)
-            losst = criterion(input_train, recont)
+            losst = criterion(recont, input_train)
             optimizer.zero_grad()
             losst.backward()
             optimizer.step()
             running_train_loss += losst.item()
+        # scheduler.step()
         
         for param_group in optimizer.param_groups:
             print('lr: ', param_group['lr'])
@@ -158,7 +172,7 @@ for i in range(iterations):  # Compare _ number of iterations
                 break
             
             elif idx == 3 and (loss / losses[idx-1]) < 10:  # Display results when the end is reached
-                plt.plot(latent_dims, losses, marker='o', label=f'{i}')
+                plt.plot(latent_dims, losses, marker='o', label=f'{i+1}')
                 plt.legend() 
                 decreasing = False  # Finished (eval losses done decreasing)
                 break
@@ -178,8 +192,10 @@ else:
 
 ##### Plot results #####
 
+print(losses)
 plt.xticks(latent_dims)
+# plt.yticks(np.log([10e-4, 10e-5, 10e-6, 10e-7]), ['10e-4', '10e-5', '10e-6', '10e-7'])
 plt.xlabel('Latent Space Dimension')
 plt.ylabel('Evaluation Loss')
-plt.title(f'T={T}, t={t}, X={X}, x={x}, k={k*dx} * 1/dx, q={q*dx} * 1/dx')
+plt.title(f'A={a}, B={b}, t={t}, x={x}, k={k*dx} * 1/dx, q={q*dx} * 1/dx')
 plt.show()
