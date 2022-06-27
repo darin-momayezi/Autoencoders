@@ -5,7 +5,7 @@ from sklearn import preprocessing
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from OneDcoarsegrid import T, t, X, x, dx, k, q, F, a, b
+from OneDcoarsegrid import T, t, dt, X, x, dx, k, q, F, a, b
 import scipy.io as sio
 
 
@@ -14,11 +14,21 @@ import scipy.io as sio
 input_size = x  # Number of spatial grid points from OneDcoarsegrid
 hidden1 = int(input_size/10)
 latent_dim = 4
-epochs = 200
+epochs = 100
 lr = 0.001  # Learning rate
 batch_size = 30
-iterations = 4  # Run autoencoder _ times
-shuffle = False  # Don't shuffle temporally sequenced data
+iterations = 2  # Run autoencoder _ times
+train_split = 0.7
+
+if b == 1:
+    shuffle = True
+else:
+    shuffle = True
+    
+if a == 0 or b == 0:
+    weight_decay = 0.0001
+else:
+    weight_decay = 0.00001
 
 
 
@@ -39,8 +49,8 @@ df = pd.DataFrame(np.load('/Users/darinmomayezi/Downloads/NSE2D[71]/1Dcoarsegrid
 
 
 
-train_data = TensorDataset(torch.Tensor(preprocessing.normalize(df[:int(0.7*df.shape[0])])))
-eval_data = TensorDataset(torch.Tensor(preprocessing.normalize(df[int(0.7*df.shape[0]):])))
+train_data = TensorDataset(torch.Tensor(preprocessing.normalize(df[:int(train_split*df.shape[0])])))
+eval_data = TensorDataset(torch.Tensor(preprocessing.normalize(df[int(train_split*df.shape[0]):])))
 train_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle=shuffle)
 eval_loader = DataLoader(dataset=eval_data, batch_size=batch_size, shuffle=shuffle)
 
@@ -78,7 +88,7 @@ def autoencoder():
         
     model = Autoencoder()
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.0001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[epochs/2], gamma=0.1)
     
@@ -173,7 +183,7 @@ for i in range(iterations):  # Compare _ number of iterations
             
             elif idx == 3 and (loss / losses[idx-1]) < 10:  # Display results when the end is reached
                 plt.plot(latent_dims, losses, marker='o', label=f'{i+1}')
-                plt.legend() 
+                plt.legend(loc='upper right') 
                 decreasing = False  # Finished (eval losses done decreasing)
                 break
             
@@ -194,8 +204,8 @@ else:
 
 print(losses)
 plt.xticks(latent_dims)
-# plt.yticks(np.log([10e-4, 10e-5, 10e-6, 10e-7]), ['10e-4', '10e-5', '10e-6', '10e-7'])
+# plt.yticks([1e-3, 1e-4], ['10^-3', '10^-4'])
 plt.xlabel('Latent Space Dimension')
 plt.ylabel('Evaluation Loss')
-plt.title(f'A={a}, B={b}, t={t}, x={x}, k={k*dx} * 1/dx, q={q*dx} * 1/dx')
+plt.title(f'A={a}, B={b}, dt={dt}, dx={dx}, k={k*dx} * 1/dx, q={q*dx} * 1/dx')
 plt.show()
