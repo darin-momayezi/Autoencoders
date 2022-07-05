@@ -5,49 +5,35 @@ from sklearn import preprocessing
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from OneDcoarsegrid import T, t, dt, X, x, dx, k, q, F, a, b
-import scipy.io as sio
+from OneDmeshgrid import x, dx, dt, k, q, a, b
+
 
 
 ##### Parameters #####
 
-input_size = x  # Number of spatial grid points from OneDcoarsegrid
-hidden1 = int(input_size/10)
+input_size = 2*x  # Number of spatial grid points from OneDcoarsegrid
+hidden1 = int(input_size/2)  # Size of hidden layer
+hidden2 = int(input_size/10)
 latent_dim = 4
-epochs = 100
+epochs = 200
 lr = 0.001  # Learning rate
 batch_size = 30
-iterations = 2  # Run autoencoder _ times
-train_split = 0.7
-
-if b == 1:
-    shuffle = True
-else:
-    shuffle = True
+iterations = 10  # Run autoencoder _ times
+train_split = 0.7  # Fraction of data for training
+shuffle = True
     
-if a == 0 or b == 0:
-    weight_decay = 0.0001
-else:
-    weight_decay = 0.00001
+# Weight decay
+if a == 0 and b == 1:
+    weight_decay = 1e-5
+elif a == 1 and b == 0:
+    weight_decay = 0
+else: weight_decay = 0
 
 
 
 ##### Data #####
 
-df = pd.DataFrame(np.load('/Users/darinmomayezi/Downloads/NSE2D[71]/1Dcoarsegrid.npy'))
-# df = pd.DataFrame(sio.loadmat('/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/Programs/1DPDEs/Xdmd.mat')['Xdmd']).T
-# df2 = pd.DataFrame(sio.loadmat('/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/Programs/1DPDEs/Phi.mat')['Phi'])
-# df = np.dot(df1, df2.T)
-
-
-# df_train = preprocessing.normalize(df[:int(0.7*df.shape[0])])
-# df_eval = preprocessing.normalize(df[int(0.7*df.shape[0]):])
-# dmd_train = preprocessing.normalize(dmd[:int(0.7*dmd.shape[0])])
-# dmd_eval = preprocessing.normalize(dmd[int(0.7*dmd.shape[0]):])
-# train_data = TensorDataset(torch.Tensor(np.concatenate([df_train, dmd_train], axis=1)))
-# eval_data = TensorDataset(torch.Tensor(np.concatenate([df_eval, dmd_eval], axis=1)))
-
-
+df = pd.DataFrame(np.load('/Users/darinmomayezi/Downloads/NSE2D[71]/1Dmeshgrid.npy'))
 
 train_data = TensorDataset(torch.Tensor(preprocessing.normalize(df[:int(train_split*df.shape[0])])))
 eval_data = TensorDataset(torch.Tensor(preprocessing.normalize(df[int(train_split*df.shape[0]):])))
@@ -67,13 +53,17 @@ def autoencoder():
             
             self.encoder = nn.Sequential(nn.Linear(input_size, hidden1, bias=True, dtype=torch.float32),
                                          nn.ReLU(),
-                                         nn.Linear(hidden1, latent_dim, bias=True, dtype=torch.float32))
+                                         nn.Linear(hidden1, hidden2, bias=True, dtype=torch.float32),
+                                         nn.ReLU(),
+                                         nn.Linear(hidden2, latent_dim, bias=True, dtype=torch.float32))
             
-            self.decoder = nn.Sequential(nn.Linear(latent_dim, hidden1, bias=True, dtype=torch.float32),
+            self.decoder = nn.Sequential(nn.Linear(latent_dim, hidden2, bias=True, dtype=torch.float32),
+                                         nn.ReLU(),
+                                         nn.Linear(hidden2, hidden1, bias=True, dtype=torch.float32),
                                          nn.ReLU(),
                                          nn.Linear(hidden1, input_size, bias=True, dtype=torch.float32))
             
-            # torch.nn.init.uniform_(self.encoder[0].weight.data, 0.0001, 0.1)
+            torch.nn.init.uniform_(self.encoder[0].weight.data, -0.001, 0.001)
             # print("\nWeight after sampling from Uniform Distribution:\n")
             # print(self.encoder[0].weight)
  
@@ -90,7 +80,10 @@ def autoencoder():
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[epochs/2], gamma=0.1)
+    if a == 1 and b == 0:
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100],gamma=0.1)    
+    else:
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150],gamma=0.1)
     
     
     train_loss = []
@@ -106,19 +99,12 @@ def autoencoder():
             recone = model(input_eval)
             losse = criterion(recone, input_eval)
             running_eval_loss += losse.item()
-        eval_loss.append(running_eval_loss / len(eval_loader))
-        print(f"Evaluation Loss: {round(running_eval_loss / len(eval_loader), 20), latent_dim}")
-
+        final_eval_loss = running_eval_loss / len(eval_loader)
+        eval_loss.append(final_eval_loss)
+        print(f"Evaluation Loss: {round(final_eval_loss, 20), latent_dim}")
         
+    # Training loop
     for epoch in range(epochs):
-        
-        #  Extract intial weights
-        # if epoch == 0 and latent_dim == 1:
-        #     for name, param in model.named_parameters():
-        #         if name == 'encoder.0.weight':
-        #             print(name, param[0])
-        #             initial_weights = param[0]
-        # break
         
         model.train()
         running_train_loss = 0
@@ -132,21 +118,24 @@ def autoencoder():
             losst.backward()
             optimizer.step()
             running_train_loss += losst.item()
-        # scheduler.step()
+        scheduler.step()
         
         for param_group in optimizer.param_groups:
             print('lr: ', param_group['lr'])
         train_loss.append(running_train_loss / len(train_loader))
         evaluate(model, eval_loader)
-        print(f'Training Loss: {round(running_train_loss / len(train_loader), 20)}')
+        print(f'Training Loss: {round(running_train_loss / len(train_loader), 20)}, Iteration {iteration+1}')
     evalDict[latent_dim].append(eval_loss[-1])
     
   
 
+'''To enforce reproducibility quit if evaluation losses increase by more than 10 (defined as a fail) for 8 iterations.'''
 fails = 0  
-for i in range(iterations):  # Compare _ number of iterations
+all_losses = []
+
+for iteration in range(iterations):  # Compare _ number of iterations
     
-    decreasing = True  # Evaluation losses decreasing 
+    decreasing = True  # Evaluation losses decreasing (condition to continue autoencoder)
     
     while decreasing and fails < 8:  # Enforce decreasing losses
         
@@ -166,6 +155,7 @@ for i in range(iterations):  # Compare _ number of iterations
             
             latent_dims.append(key)
             losses.append(value[0])
+            all_losses.append(value[0])
         
                 
         # Enforce decreasing losses
@@ -173,6 +163,9 @@ for i in range(iterations):  # Compare _ number of iterations
             
             if idx == 0 or idx == 1:  # Skip the first eval loss
                 continue
+            
+            elif loss > 6e-7:  # Get rid of losses that mess up graph
+                break
             
             elif (loss / losses[idx-1]) < 10 and idx < 3:  # Continue if this error smaller than the last
                 continue
@@ -202,9 +195,18 @@ else:
 
 ##### Plot results #####
 
+print(all_losses)
+
 print(losses)
 plt.xticks(latent_dims)
-# plt.yticks([1e-3, 1e-4], ['10^-3', '10^-4'])
+
+if a == 1 and b == 1:
+    plt.yticks([5e-7, 1e-7, 1e-8], ['5*10^-7', '10^-7', '10^-8'])
+elif a == 0 and b == 1:
+    plt.yticks([1e-6, 1e-7], ['10^-6', '10^-7'])
+elif a == 1 and b == 0:
+    plt.yticks([1e-6, 1e-7], ['10^-6', '10^-7'])
+    
 plt.xlabel('Latent Space Dimension')
 plt.ylabel('Evaluation Loss')
 plt.title(f'A={a}, B={b}, dt={dt}, dx={dx}, k={k*dx} * 1/dx, q={q*dx} * 1/dx')
