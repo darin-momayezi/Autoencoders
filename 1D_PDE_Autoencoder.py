@@ -20,7 +20,7 @@ lr = 0.001  # Learning rate
 batch_size = 30
 iterations = 10  # Run autoencoder _ times
 train_split = 0.7  # Fraction of data for training
-shuffle = True
+shuffle = False
     
 # Weight decay
 if a == 0 and b == 1:
