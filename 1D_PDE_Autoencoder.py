@@ -175,7 +175,7 @@ for iteration in range(iterations):  # Compare _ number of iterations
                 break
             
             elif idx == 3 and (loss / losses[idx-1]) < 10:  # Display results when the end is reached
-                plt.plot(latent_dims, losses, marker='o', label=f'{i+1}')
+                plt.plot(latent_dims, losses, marker='o', label=f'{iteration+1}')
                 plt.legend(loc='upper right') 
                 decreasing = False  # Finished (eval losses done decreasing)
                 break
