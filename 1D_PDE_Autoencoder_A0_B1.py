@@ -89,7 +89,7 @@ def autoencoder():
         # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3000],gamma=0.1)
 
         # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150],gamma=0.1)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=850)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=880)
     
     
     train_loss = []
@@ -213,6 +213,15 @@ plt.xticks(latent_dims)
 #     plt.yticks([1e-9, 1e-10], ['10^-9', '10^-10'])
 # elif a == 1 and b == 0:
 #     plt.yticks([1e-6, 1e-7], ['10^-6', '10^-7'])
+
+largest_loss = 0
+for loss in all_losses:
+    if loss >= largest_loss:
+        largest_loss = loss
+        
+print(largest_loss)
+
+plt.yticks([largest_loss * 10, largest_loss / 10], [str(round(largest_loss * 10, 14)), str(round(largest_loss / 10, 14))])
     
 plt.xlabel('Latent Space Dimension')
 plt.ylabel('Evaluation Loss')
