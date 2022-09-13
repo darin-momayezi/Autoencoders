@@ -32,7 +32,7 @@ if a == 0 and b == 1:
     weight_decay = 0
 elif a == 1 and b == 1:
     epochs = 2000
-    lr = 0.001
+    lr = 0.01
     weight_decay = 0
 elif a == 1 and b == 0:
     epochs = 400
@@ -93,7 +93,7 @@ def autoencoder():
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=50)
         
     elif a == 1 and b == 1:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2000)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=500)
 
     
     
