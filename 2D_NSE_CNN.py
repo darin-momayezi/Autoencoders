@@ -1,3 +1,9 @@
+'''This is an autoencoder trained on data from a 2D Navier-Stokes integrator. We test different latent dimenions, which in a CNN
+means the number of features in the latent space. The features themselves are most likely multiple dimensional, so this code can be 
+improved by saving the features in the latent space and performing an inexpensive PCA analysis on each feature to estimate the actual
+dimensionaliy of the system. This code ensures decreasing evaluation losses by throwing out weights that lead to undesirable losses and 
+saving (if save_weights = True) and reusing (if reload_weights = True) those that produce desirable results.'''
+
 import os
 import torch
 import pandas as pd
@@ -34,14 +40,18 @@ def normalize(matrix):
     return matrix
            
 
-# Variables
+# Tunable Parameters
 features = 10 # latent_dim
 kernel = 3
 stride = 1
 padding = 1
 
-save_weights = True
+save_weights = False
 save_features = False
+reload_weights = False
+
+# Saving weights for reuse
+weight_dict = {}
 
 # Define the CNN
 def CNN():
@@ -114,17 +124,15 @@ def CNN():
     model = Net()
     criterion = MSELoss()
     optimizer = Adam(model.parameters(), lr=0.001)
-    if latent_dim > 8:
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=100)
+    if latent_dim > 8 and reload_weights:
         # Reuse weights for more consistent graphs
-        pretrained_dict = torch.load('/Users/darinmomayezi/Desktop/pretrained_weights2.pth')
+        weight_dict[latent_dim] = model.state_dict()
+        pretrained_dict = torch.load(f'/Users/darinmomayezi/Desktop/pretrained_weights5{subdomain}.pth')
         model_dict = model.state_dict()
         for k, v in pretrained_dict.items():
             model_dict[k] = v
-        model_dict.update(model_dict)
-        print(len(pretrained_dict))
-        print(len(model.state_dict()))
-        # model_dict.update(pretrained_dict)
-        # model.load_state_dict(model_dict)
+        # model.state_dict().update(model_dict)
             
 
     # Training Loop
@@ -151,35 +159,40 @@ def CNN():
         
         evaluate(model)
         
-        for param_group in optimizer.param_groups:
-            print('lr: ', param_group['lr'])
+        # for param_group in optimizer.param_groups:
+        #     print('lr: ', param_group['lr'])
         print(f'epoch: {e+1}')
-        print('training loss: ', training_loss)
+        print('training loss: ', epoch_loss)
+        print('latent dimension: ', latent_dim)
+        print('subdomain: ', subdomain)
     evalDict[latent_dim] = eval_loss[-1]
+    scheduler.step(epoch_loss)
     if save_weights:
-        torch.save(model.state_dict(), '/Users/darinmomayezi/Desktop/pretrained_weights2.pth')
+        torch.save(model.state_dict(), f'/Users/darinmomayezi/Desktop/pretrained_weights5{subdomain}.pth')
 
 
 # Run CNN and plot results for each subdomain in vorticity data
-for subdomain in range(1, 65):
+for subdomain in range(8, 65):
     
     omega_sub = f'omega{subdomain}_sub'  # key to access data in dictionary when using loadmat
     
     # Load Data
-    training_data = NSEDataset(root_dir=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_subdomain_data/Vorticity_subdomain{subdomain}_train',
-                annotation_file=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_subdomain_data/Vorticity_subdomain{subdomain}_train/omega_names_subdomain.csv',
+    training_data = NSEDataset(root_dir=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_train',
+                annotation_file=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_train/omega_names_subdomain.csv',
                 transform=normalize)
-    eval_data = NSEDataset(root_dir=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_subdomain_data/Vorticity_subdomain{subdomain}_test',
-                annotation_file=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_subdomain_data/Vorticity_subdomain{subdomain}_test/omega_names_subdomain_test.csv',
+    eval_data = NSEDataset(root_dir=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test',
+                annotation_file=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/omega_names_subdomain_test.csv',
                 transform=normalize)
     training_loader = DataLoader(training_data, batch_size=10)
     eval_loader = DataLoader(eval_data, batch_size=10)
     
+    losses = []
+        
     training_loss = []  
     eval_loss = []
     evalDict = {}
     
-    latent_dims = [8, 16, 24, 32, 48, 64]
+    latent_dims = [8, 16, 24, 32, 40]
     for latent_dim in latent_dims:
         features = latent_dim
         
@@ -188,30 +201,44 @@ for subdomain in range(1, 65):
             
         CNN()  
         
-    losses = []
-    for key, value in evalDict.items():
-        losses.append(value)
-        
-    # Graph results
-    plt.figure(subdomain)  # creates a new plt canvas
-    plt.plot(latent_dims, losses, marker='o')
-    plt.xticks(latent_dims)
+        error_increasing = True
+        while error_increasing:
+            if latent_dim == latent_dims[0]:  # skip first loss
+                losses.append(evalDict[latent_dim])
+                error_increasing = False
+            
+            
+            elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) < 1:
+                losses.append(evalDict[latent_dim])
+                error_increasing = False
+            
+            elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) > 1:
+                CNN()
+                
+        if latent_dim == latent_dims[-1]: # Plot results after running the last latent dimension
+            # Graph results
+            plt.figure(subdomain)  # creates a new plt canvas
+            plt.plot(latent_dims, losses, marker='o')
+            plt.xticks(latent_dims)
+            
+            # Label loss if at least 3e-5 smaller than previous
+            yticks = []
+            yticks_labels = []
+            for index, loss in enumerate(losses):
+                if index == 0:
+                    yticks.append(losses[index])
+                    yticks_labels.append(str(round(losses[index], 5)))
+                elif (losses[index - 1] / losses[index]) <= 5:  # Label if at least 5x smaller than previous loss
+                    yticks.append(losses[index])
+                    yticks_labels.append(str(round(losses[index], 5)))
+            plt.yticks(yticks, yticks_labels)
+            
+            plt.xlabel('Latent Features')
+            plt.ylabel('Evaluation loss')
+            plt.title(f'Convlutional Autoencoder - 2D NSE - Subdomain {subdomain}')
+            plt.show()
     
-    # Label loss if at least 3e-5 smaller than previous
-    yticks = []
-    yticks_labels = []
-    for index, loss in enumerate(losses):
-        if index == 0:
-            yticks.append(losses[index])
-            yticks_labels.append(str(round(losses[index], 5)))
-        elif (losses[index-1] - losses[index]) > 3e-5:
-            yticks.append(losses[index])
-            yticks_labels.append(str(round(losses[index], 5)))
-    plt.yticks(yticks, yticks_labels)
-    
-    plt.xlabel('Latent Features')
-    plt.ylabel('Evaluation loss')
-    plt.title('Convlutional Autoencoder - 2D NSE')
-    plt.savefig(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_subdomain_data/Vorticity_subdomain{subdomain}_test/AE_2D_NSE_subdomain{subdomain}.png')
-    
+            plt.savefig(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/AE_2D_NSE_subdomain{subdomain}.png')
+
+
 
