@@ -48,10 +48,8 @@ padding = 1
 
 save_weights = False
 save_features = False
-reload_weights = False
+reload_weights = True
 
-# Saving weights for reuse
-weight_dict = {}
 
 # Define the CNN
 def CNN():
@@ -125,14 +123,17 @@ def CNN():
     criterion = MSELoss()
     optimizer = Adam(model.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=100)
-    if latent_dim > 8 and reload_weights:
+    if latent_dim == 8 and reload_weights:
         # Reuse weights for more consistent graphs
         weight_dict[latent_dim] = model.state_dict()
-        pretrained_dict = torch.load(f'/Users/darinmomayezi/Desktop/pretrained_weights5{subdomain}.pth')
+    elif latent_dim > 8 and reload_weights:
+        weight_dict[latent_dim] = model.state_dict()
+        # pretrained_dict = torch.load(f'/Users/darinmomayezi/Desktop/pretrained_weights5{subdomain}.pth')
+        pretrained_dict = weight_dict[latent_dim - 8]
         model_dict = model.state_dict()
         for k, v in pretrained_dict.items():
             model_dict[k] = v
-        # model.state_dict().update(model_dict)
+        model.state_dict().update(model_dict)
             
 
     # Training Loop
@@ -172,7 +173,7 @@ def CNN():
 
 
 # Run CNN and plot results for each subdomain in vorticity data
-for subdomain in range(8, 65):
+for subdomain in range(1, 65):
     
     omega_sub = f'omega{subdomain}_sub'  # key to access data in dictionary when using loadmat
     
@@ -185,6 +186,9 @@ for subdomain in range(8, 65):
                 transform=normalize)
     training_loader = DataLoader(training_data, batch_size=10)
     eval_loader = DataLoader(eval_data, batch_size=10)
+    
+    # Saving weights for reuse
+    weight_dict = {}
     
     losses = []
         
@@ -236,9 +240,7 @@ for subdomain in range(8, 65):
             plt.xlabel('Latent Features')
             plt.ylabel('Evaluation loss')
             plt.title(f'Convlutional Autoencoder - 2D NSE - Subdomain {subdomain}')
-            plt.show()
+            # plt.show()
     
             plt.savefig(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/AE_2D_NSE_subdomain{subdomain}.png')
-
-
 
