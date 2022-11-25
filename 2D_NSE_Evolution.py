@@ -1,8 +1,7 @@
-'''This script is meant to test the predictive capability of a CNN model on the 2-D NSE integrator data (or othe data). It is important
-to see and quantify the accuracy of prediction into the future. This would tell us where the model could use improvement. Weights are 
-loaded into the same CNN architecture that produced them, but the this model is not trained since it is only meant to implement the 
-encoding and decoding functions that have already been learned. Weights from a simple Autoencoder or a predictive Autoencoder (identity
-and evolution learned operators) may be supplied.'''
+'''This script is meant to test the predictive capability of a CNN model on the 2-D NSE integrator data (or other data). The Autoencoder
+learns two steps sequentially: first the encoder learns an identity operator that maps the data to a low dimensional latent space and 
+then the decoder learns an envolution operator that maps the data from the latent space to a specified time in the future. 
+The Autoencoder is first trained to learn the identity operator, the weights are saved and then '''
 
 import os
 import torch
@@ -78,23 +77,12 @@ def CNN():
                 Conv2d(16, 32, kernel, stride=stride, padding=padding),
                 ReLU(True),
                 Conv2d(32, 64, kernel, stride=stride, padding=padding),
-                ReLU(True),
-                
-                
-                # Linear Section
-                Flatten(start_dim=1),
-                Linear(int(64 * 50 * 50), 50),
-                Sigmoid(),
-                Linear(50, 50))
+                ReLU(True)
+                )
             
             
             # DECODER
             self.decode = Sequential(
-                # Linear Section
-                Linear(50, 50),
-                Sigmoid(),
-                Linear(50, int(64 * 50 * 50)),
-                Unflatten(dim=1, unflattened_size=(64, 50, 50)),
             
                 # ReLU(True),
                 ConvTranspose2d(64, 32, kernel, stride=stride, padding=padding),
@@ -135,50 +123,139 @@ def CNN():
         print('evaluation loss: ', epoch_eval_loss)
         
         
-    model = Net()
-    optimizer = Adam(model.parameters(), lr=0.01)
-    criterion = MSELoss()
-    # print(model)
+        
+    def encoder_train():  # Encoder learns the identity operator
+        model.train()
+        running_loss = 0
+        
+        for input in training_loader:
+            input = torch.unsqueeze(input, 1)
+            prediction = model(input)
+            loss = criterion(input, prediction)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
             
-
-    # Training Loop
-    for e in range(5):
+        epoch_loss = running_loss/len(training_loader)
+        training_loss.append(epoch_loss)
+        
+    def encoder_evaluate():
+        model.eval()
+        running_loss = 0
+        
+        for input in eval_loader:
+            input = torch.unsqueeze(input, 1)
+            prediction = model(input)
+            loss = criterion(input, prediction)
+            running_loss += loss.item()
+        
+        epoch_eval_loss = running_loss / len(eval_loader)
+        eval_loss.append(epoch_eval_loss)
+        print('evaluation loss: ', epoch_eval_loss)
+        
+        
+        
+        
+    def decoder_train():  # Decoder learns time evolution operator
         model.train()
         running_loss = 0
         
         index = 0
         previous = 0
         for input in training_loader:
+            input = torch.unsqueeze(input, 1)
+            
             if index == 0:
-                prediction = model(input.unsqueeze(0))
-                recon = model(input.unsqueeze(0))
-            else:
+                previous = input
                 prediction = model(previous)
-                recon = model(input.unsqueeze(0))
-            evolution_loss = criterion(input, prediction)  # for the decoder
-            recon_loss = criterion(input, recon)  # for the encoder
+                loss = criterion(prediction, input)
+                
+            elif index > 0:
+                prediction = model(previous)  # Evolve previous state to current time step
+                loss = criterion(input, prediction)
+                
             optimizer.zero_grad()
-            evolution_loss.backward()
+            loss.backward()
             optimizer.step()
             running_loss += loss.item()
-            previous = input.unsqueeze(0)
-            index += 1
-            if e >= 3 and index == 1:
-                print(input[0][20])
-                print(prediction[0][0][20])
-            
+                
         epoch_loss = running_loss/len(training_loader)
-        training_loss.append(epoch_loss)
+        training_loss.append(epoch_loss)    
         
-        evaluate(model)
+    def decoder_evaluate():
+        pass   
+            
         
-        for param_group in optimizer.param_groups:
-            print('lr: ', param_group['lr'])
-        print(f'epoch: {e+1}')
-        print('training loss: ', training_loss)
-    evalDict[latent_dim] = eval_loss[-1]
-    if save_weights:
-        torch.save(model.state_dict(), '/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_test/2D_NSE_CNN_weights.pth')
+        
+    model = Net()
+    optimizer = Adam(model.parameters(), lr=0.01)
+    criterion = MSELoss()
+            
+    for step in range(2, 3):  # Step 1 learns identity, step 2 learns time evolution
+        
+        if step == 1:
+            for epoch in range(200):
+                encoder_train()
+            encoder_evaluate()
+            
+        if step == 2:
+            for i, param in enumerate(model.named_parameters()):
+                print(param)
+            '''Here need to load encoding weights to encoder and turn requires_grad to False so that they don't change.'''
+            break
+            for epoch in range(200):
+                decoder_train()
+            decoder_evaluate()
+
+
+
+
+
+
+
+
+
+
+
+    # Training Loop
+    # for e in range(200):
+    #     model.train()
+    #     running_loss = 0
+        
+    #     index = 0
+    #     previous = 0
+    #     for input in training_loader:
+    #         if index == 0:
+    #             prediction = model(input.unsqueeze(0))
+    #             recon = model(input.unsqueeze(0))
+    #         else:
+    #             prediction = model(previous)
+    #             recon = model(input.unsqueeze(0))
+    #         evolution_loss = criterion(input, prediction)  # for the decoder
+    #         recon_loss = criterion(input, recon)  # for the encoder
+    #         optimizer.zero_grad()
+    #         evolution_loss.backward()
+    #         optimizer.step()
+    #         running_loss += recon_loss.item()
+    #         previous = input.unsqueeze(0)
+    #         index += 1
+    #         if e >= 3 and index == 1:
+    #             print(input[0][20])
+    #             print(prediction[0][0][20])
+            
+    #     epoch_loss = running_loss/len(training_loader)
+    #     training_loss.append(epoch_loss)
+        
+    #     evaluate(model)
+        
+    #     for param_group in optimizer.param_groups:
+    #         print('lr: ', param_group['lr'])
+    #     print(f'epoch: {e+1}')
+    #     print('training loss: ', training_loss)
+    # evalDict[latent_dim] = eval_loss[-1]
+    # if save_weights:
+    #     torch.save(model.state_dict(), '/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_test/2D_NSE_CNN_weights.pth')
 
 
 # Run CNN and plot results
