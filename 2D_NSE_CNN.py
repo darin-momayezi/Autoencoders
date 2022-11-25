@@ -1,10 +1,12 @@
-'''This is an autoencoder trained on data from a 2D Navier-Stokes integrator. We test different latent dimenions, which in a CNN
+'''This is an autoencoder for training on data from a 2D Navier-Stokes integrator. We test different latent dimenions, which in a CNN
 means the number of features in the latent space. The features themselves are most likely multiple dimensional, so this code can be 
 improved by saving the features in the latent space and performing an inexpensive PCA analysis on each feature to estimate the actual
 dimensionaliy of the system. This code ensures decreasing evaluation losses by throwing out weights that lead to undesirable losses and 
 saving (if save_weights = True) and reusing (if reload_weights = True) those that produce desirable results.'''
 
 import os
+from os import makedirs
+from os.path import exists
 import torch
 import pandas as pd
 import numpy as np
@@ -46,9 +48,9 @@ kernel = 3
 stride = 1
 padding = 1
 
-save_weights = False
+save_weights = False # Save weights to computer
 save_features = False
-reload_weights = True
+reload_weights = False # Reload weights from previous latent_dim, not saved on computer
 
 
 # Define the CNN
@@ -122,17 +124,19 @@ def CNN():
     model = Net()
     criterion = MSELoss()
     optimizer = Adam(model.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=100)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=40)
+    
+    # Reuse weights for more consistent graphs
     if latent_dim == 8 and reload_weights:
-        # Reuse weights for more consistent graphs
-        weight_dict[latent_dim] = model.state_dict()
+        weight_dict[latent_dim] = model.state_dict()  # Store weights in weight_dict
+        
     elif latent_dim > 8 and reload_weights:
-        weight_dict[latent_dim] = model.state_dict()
-        # pretrained_dict = torch.load(f'/Users/darinmomayezi/Desktop/pretrained_weights5{subdomain}.pth')
-        pretrained_dict = weight_dict[latent_dim - 8]
+        weight_dict[latent_dim] = model.state_dict()  # Store weights in weight_dict
+        pretrained_dict = weight_dict[latent_dim - 8]  # Collect weights from weight_dict
         model_dict = model.state_dict()
+        
         for k, v in pretrained_dict.items():
-            model_dict[k] = v
+            model_dict[k] = v  # Load recycled weights into current model
         model.state_dict().update(model_dict)
             
 
@@ -150,26 +154,25 @@ def CNN():
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-            # if e >= 0 and index == 0:
-            #     print(input[0][0])
-            #     print(prediction[0][0])
             index += 1
             
         epoch_loss = running_loss/len(training_loader)
         training_loss.append(epoch_loss)
+        scheduler.step(epoch_loss)
         
         evaluate(model)
         
-        # for param_group in optimizer.param_groups:
-        #     print('lr: ', param_group['lr'])
+        for param_group in optimizer.param_groups:
+            print('lr: ', param_group['lr'])
         print(f'epoch: {e+1}')
         print('training loss: ', epoch_loss)
         print('latent dimension: ', latent_dim)
         print('subdomain: ', subdomain)
     evalDict[latent_dim] = eval_loss[-1]
-    scheduler.step(epoch_loss)
-    if save_weights:
-        torch.save(model.state_dict(), f'/Users/darinmomayezi/Desktop/pretrained_weights5{subdomain}.pth')
+    
+    if save_weights and latent_dim == latent_dims[-1]:  # Save weights upon last latent_dim (or upon other choice)
+        torch.save(model.state_dict(), f'/Users/darinmomayezi/Desktop/Vorticity_single_period/weights{subdomain}.pth')
+            
 
 
 # Run CNN and plot results for each subdomain in vorticity data
@@ -187,7 +190,7 @@ for subdomain in range(1, 65):
     training_loader = DataLoader(training_data, batch_size=10)
     eval_loader = DataLoader(eval_data, batch_size=10)
     
-    # Saving weights for reuse
+    # Store weights for reuse
     weight_dict = {}
     
     losses = []
@@ -231,16 +234,17 @@ for subdomain in range(1, 65):
             for index, loss in enumerate(losses):
                 if index == 0:
                     yticks.append(losses[index])
-                    yticks_labels.append(str(round(losses[index], 5)))
-                elif (losses[index - 1] / losses[index]) <= 5:  # Label if at least 5x smaller than previous loss
+                    yticks_labels.append(str(round(losses[index], 8)))
+                elif abs(losses[index - 1] - losses[index]) >= 10:  # Label if at least 5x smaller than previous loss
                     yticks.append(losses[index])
-                    yticks_labels.append(str(round(losses[index], 5)))
+                    yticks_labels.append(str(round(losses[index], 8)))
             plt.yticks(yticks, yticks_labels)
             
             plt.xlabel('Latent Features')
             plt.ylabel('Evaluation loss')
             plt.title(f'Convlutional Autoencoder - 2D NSE - Subdomain {subdomain}')
-            # plt.show()
+            plt.show()
     
-            plt.savefig(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/AE_2D_NSE_subdomain{subdomain}.png')
+            # plt.savefig(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/AE_2D_NSE_subdomain{subdomain}.png')
+
 
