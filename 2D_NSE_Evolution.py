@@ -70,28 +70,21 @@ def CNN():
             # n' = 512 + 2p - f + 1 = 510
             
             self.encode = Sequential(
-                Conv2d(1, 8, kernel, stride=stride, padding=padding),
-                ReLU(True),
-                Conv2d(8, 16, kernel, stride=stride, padding=padding),
-                ReLU(True),
-                Conv2d(16, 32, kernel, stride=stride, padding=padding),
-                ReLU(True),
-                Conv2d(32, 64, kernel, stride=stride, padding=padding),
-                ReLU(True)
-                )
+                Conv2d(1, int(features/4), kernel, stride=stride, padding=padding),
+                ReLU(),
+                Conv2d(int(features/4), int(features/2), kernel, stride=stride, padding=padding),
+                ReLU(),
+                Conv2d(int(features/2), features, kernel, stride=stride, padding=padding),
+                Dropout2d(0.2))
             
             
             # DECODER
             self.decode = Sequential(
-            
-                # ReLU(True),
-                ConvTranspose2d(64, 32, kernel, stride=stride, padding=padding),
-                ReLU(True),
-                ConvTranspose2d(32, 16, kernel, stride=stride, padding=padding),
-                ReLU(True),
-                ConvTranspose2d(16, 8, kernel, stride=stride, padding=padding),
-                ReLU(True),
-                ConvTranspose2d(8, 1, kernel, stride=stride, padding=padding))
+                Conv2d(features, int(features/2), kernel, stride=stride, padding=padding),
+                ReLU(),
+                Conv2d(int(features/2), int(features/4), kernel, stride=stride, padding=padding),
+                ReLU(),
+                Conv2d(int(features/4), 1, kernel, stride=stride, padding=padding))
 
             
         def forward(self, x):
@@ -102,29 +95,11 @@ def CNN():
             decoded = self.decode(encoded)
             return decoded
 
-    def evaluate(model):
-        model.eval()
-        running_eval_loss = 0
-        
-        previous = 0
-        index = 0
-        for input in eval_loader:
-            if index == 0:
-                eval_prediction = model(input.unsqueeze(0))
-            else:
-                eval_prediction = model(previous)
-            losse = criterion(input.unsqueeze(0), eval_prediction)
-            running_eval_loss += losse.item()
-            previous = input.unsqueeze(0)
-            index += 1
-        
-        epoch_eval_loss = running_eval_loss / len(eval_loader)
-        eval_loss.append(epoch_eval_loss)
-        print('evaluation loss: ', epoch_eval_loss)
-        
-        
-        
-    def encoder_train():  # Encoder learns the identity operator
+    model = Net()
+    optimizer = Adam(model.parameters(), lr=0.01)
+    criterion = MSELoss()
+    
+    def encoder_train(model, criterion, optimizer):  # Encoder learns the identity operator
         model.train()
         running_loss = 0
         
@@ -140,7 +115,7 @@ def CNN():
         epoch_loss = running_loss/len(training_loader)
         training_loss.append(epoch_loss)
         
-    def encoder_evaluate():
+    def encoder_evaluate(model, criterion):
         model.eval()
         running_loss = 0
         
@@ -151,13 +126,13 @@ def CNN():
             running_loss += loss.item()
         
         epoch_eval_loss = running_loss / len(eval_loader)
-        eval_loss.append(epoch_eval_loss)
-        print('evaluation loss: ', epoch_eval_loss)
+        encoder_eval_loss.append(epoch_eval_loss)
+        print('encoder evaluation loss: ', epoch_eval_loss)
         
         
         
         
-    def decoder_train():  # Decoder learns time evolution operator
+    def decoder_train(model, criterion, optimizer):  # Decoder learns time evolution operator
         model.train()
         running_loss = 0
         
@@ -169,98 +144,68 @@ def CNN():
             if index == 0:
                 previous = input
                 prediction = model(previous)
-                loss = criterion(prediction, input)
                 
             elif index > 0:
                 prediction = model(previous)  # Evolve previous state to current time step
-                loss = criterion(input, prediction)
-                
+            
+            loss = criterion(input, prediction)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
+            previous = input
+            index += 1
                 
         epoch_loss = running_loss/len(training_loader)
         training_loss.append(epoch_loss)    
         
-    def decoder_evaluate():
-        pass   
+    def decoder_evaluate(model, criterion):
+        model.eval()
+        running_eval_loss = 0
+        
+        index = 0
+        previous = 0
+        for input in training_loader:
+            input = torch.unsqueeze(input, 1)
             
-        
-        
-    model = Net()
-    optimizer = Adam(model.parameters(), lr=0.01)
-    criterion = MSELoss()
+            if index == 0:
+                previous = input
+                prediction = model(previous)
+                
+            elif index > 0:
+                prediction = model(previous)  # Evolve previous state to current time step
+            
+            loss = criterion(input, prediction)
+            running_eval_loss += loss.item()
+            previous = input
+            index += 1
+            
+            epoch_eval_loss = running_eval_loss / len(eval_loader)
+            decoder_eval_loss.append(epoch_eval_loss)
+            print('decoder evaluation loss: ', epoch_eval_loss)
             
     for step in range(2, 3):  # Step 1 learns identity, step 2 learns time evolution
         
         if step == 1:
             for epoch in range(200):
-                encoder_train()
-            encoder_evaluate()
+                encoder_train(model=model, criterion=criterion, optimizer=optimizer)
+            encoder_evaluate(model=model, criterion=criterion)
             
-        if step == 2:
+        if step == 2: 
+            # Remove gradient from encoding weights/hold constant
             for i, param in enumerate(model.named_parameters()):
-                print(param)
-            '''Here need to load encoding weights to encoder and turn requires_grad to False so that they don't change.'''
-            break
+                name = param[0]
+                if 'encode' in name:
+                    param[1].requires_grad = False
+                    
             for epoch in range(200):
-                decoder_train()
-            decoder_evaluate()
-
-
-
-
-
-
-
-
-
-
-
-    # Training Loop
-    # for e in range(200):
-    #     model.train()
-    #     running_loss = 0
-        
-    #     index = 0
-    #     previous = 0
-    #     for input in training_loader:
-    #         if index == 0:
-    #             prediction = model(input.unsqueeze(0))
-    #             recon = model(input.unsqueeze(0))
-    #         else:
-    #             prediction = model(previous)
-    #             recon = model(input.unsqueeze(0))
-    #         evolution_loss = criterion(input, prediction)  # for the decoder
-    #         recon_loss = criterion(input, recon)  # for the encoder
-    #         optimizer.zero_grad()
-    #         evolution_loss.backward()
-    #         optimizer.step()
-    #         running_loss += recon_loss.item()
-    #         previous = input.unsqueeze(0)
-    #         index += 1
-    #         if e >= 3 and index == 1:
-    #             print(input[0][20])
-    #             print(prediction[0][0][20])
-            
-    #     epoch_loss = running_loss/len(training_loader)
-    #     training_loss.append(epoch_loss)
-        
-    #     evaluate(model)
-        
-    #     for param_group in optimizer.param_groups:
-    #         print('lr: ', param_group['lr'])
-    #     print(f'epoch: {e+1}')
-    #     print('training loss: ', training_loss)
-    # evalDict[latent_dim] = eval_loss[-1]
-    # if save_weights:
-    #     torch.save(model.state_dict(), '/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_test/2D_NSE_CNN_weights.pth')
-
+                decoder_train(model=model, criterion=criterion, optimizer=optimizer)
+            decoder_evaluate(model=model, criterion=criterion)
 
 # Run CNN and plot results
 training_loss = []  
-eval_loss = []
+encoder_eval_loss = []
+decoder_eval_loss = []
 evalDict = {}
 latents = [15]
 
