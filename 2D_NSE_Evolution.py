@@ -27,8 +27,7 @@ class NSEDataset(Dataset):
     
     def __getitem__(self, idx):
         matrix_path = os.path.join(self.root_dir, self.annotations.iloc[idx, 0])
-        print(matrix_path)
-        matrix = np.array(loadmat(matrix_path)['omega1_sub'])
+        matrix = np.array(loadmat(matrix_path)[omega_sub])
         if self.transform:
             matrix = self.transform(matrix)
         return torch.tensor(matrix, dtype=torch.float32)
@@ -38,17 +37,6 @@ def normalize(matrix):
     norm = np.linalg.norm(matrix[0], 1)
     matrix = matrix/norm
     return matrix
-
-# Load training data
-training_data = NSEDataset(root_dir='/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_subdomain_train/',
-                annotation_file='/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_subdomain_train/omega_names_subdomain.csv',
-                transform=normalize)
-eval_data = NSEDataset(root_dir='/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_subdomain_test/',
-                annotation_file='/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_subdomain_test/omega_names_subdomain_test.csv',
-                transform=normalize)
-training_loader = DataLoader(training_data)
-eval_loader = DataLoader(eval_data)
-# print(next(iter(training_loader)).shape)  # size of input
 
 # Encoded dimension
 features = 10 # latent_dim
@@ -139,16 +127,15 @@ def CNN():
         index = 0
         previous = 0
         for input in training_loader:
-            input = torch.unsqueeze(input, 1)
             
             if index == 0:
                 previous = input
-                prediction = model(previous)
+                prediction = model(torch.unsqueeze(previous, 1))
                 
             elif index > 0:
-                prediction = model(previous)  # Evolve previous state to current time step
+                prediction = model(torch.unsqueeze(previous, 1))  # Evolve previous state to current time step
             
-            loss = criterion(input, prediction)
+            loss = criterion(torch.unsqueeze(input, 1), prediction)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -165,31 +152,30 @@ def CNN():
         
         index = 0
         previous = 0
-        for input in training_loader:
-            input = torch.unsqueeze(input, 1)
+        for input in eval_loader:
             
             if index == 0:
                 previous = input
-                prediction = model(previous)
+                prediction = model(torch.unsqueeze(previous, 1))
                 
             elif index > 0:
-                prediction = model(previous)  # Evolve previous state to current time step
+                prediction = model(torch.unsqueeze(previous, 1))  # Evolve previous state to current time step
             
-            loss = criterion(input, prediction)
+            loss = criterion(torch.unsqueeze(input, 1), prediction)
             running_eval_loss += loss.item()
             previous = input
             index += 1
             
-            epoch_eval_loss = running_eval_loss / len(eval_loader)
-            decoder_eval_loss.append(epoch_eval_loss)
-            print('decoder evaluation loss: ', epoch_eval_loss)
+        epoch_eval_loss = running_eval_loss / len(eval_loader)
+        decoder_eval_loss.append(epoch_eval_loss)
+        print('decoder evaluation loss: ', epoch_eval_loss)
             
-    for step in range(2, 3):  # Step 1 learns identity, step 2 learns time evolution
+    for step in range(1, 3):  # Step 1 learns identity, step 2 learns time evolution
         
         if step == 1:
             for epoch in range(200):
                 encoder_train(model=model, criterion=criterion, optimizer=optimizer)
-            encoder_evaluate(model=model, criterion=criterion)
+                encoder_evaluate(model=model, criterion=criterion)
             
         if step == 2: 
             # Remove gradient from encoding weights/hold constant
@@ -200,21 +186,36 @@ def CNN():
                     
             for epoch in range(200):
                 decoder_train(model=model, criterion=criterion, optimizer=optimizer)
-            decoder_evaluate(model=model, criterion=criterion)
+                decoder_evaluate(model=model, criterion=criterion)
 
 # Run CNN and plot results
 training_loss = []  
 encoder_eval_loss = []
 decoder_eval_loss = []
 evalDict = {}
-latents = [15]
+latents = [16]
 
-for latent_dim in latents:
-    features = latent_dim
-    if latent_dim not in evalDict:
-        evalDict[latent_dim] = 0 
-        
-    CNN()  
+
+for subdomain in range(1, 2):
+    
+    omega_sub = f'omega{subdomain}_sub'  # key to access data in dictionary when using loadmat
+    
+    # Load Data
+    training_data = NSEDataset(root_dir=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_train',
+                annotation_file=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_train/omega_names_subdomain.csv',
+                transform=normalize)
+    eval_data = NSEDataset(root_dir=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test',
+                annotation_file=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/omega_names_subdomain_test.csv',
+                transform=normalize)
+    training_loader = DataLoader(training_data, batch_size=1)
+    eval_loader = DataLoader(eval_data, batch_size=1)
+    
+    for latent_dim in latents:
+        features = latent_dim
+        if latent_dim not in evalDict:
+            evalDict[latent_dim] = 0 
+            
+        CNN()  
     
 latent_dims = []
 losses = []
