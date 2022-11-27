@@ -84,7 +84,7 @@ def CNN():
             return decoded
 
     model = Net()
-    optimizer = Adam(model.parameters(), lr=0.01)
+    optimizer = Adam(model.parameters(), lr=0.001)
     criterion = MSELoss()
     
     def encoder_train(model, criterion, optimizer):  # Encoder learns the identity operator
@@ -101,7 +101,7 @@ def CNN():
             running_loss += loss.item()
             
         epoch_loss = running_loss/len(training_loader)
-        training_loss.append(epoch_loss)
+        encoder_training_loss.append(epoch_loss)
         
     def encoder_evaluate(model, criterion):
         model.eval()
@@ -144,7 +144,7 @@ def CNN():
             index += 1
                 
         epoch_loss = running_loss/len(training_loader)
-        training_loss.append(epoch_loss)    
+        decoder_training_loss.append(epoch_loss)    
         
     def decoder_evaluate(model, criterion):
         model.eval()
@@ -187,13 +187,12 @@ def CNN():
             for epoch in range(200):
                 decoder_train(model=model, criterion=criterion, optimizer=optimizer)
                 decoder_evaluate(model=model, criterion=criterion)
+                
+            for i, param in enumerate(model.named_parameters()):
+                name = param[0]
+                if 'encode' in name:
+                    param[1].requires_grad = True
 
-# Run CNN and plot results
-training_loss = []  
-encoder_eval_loss = []
-decoder_eval_loss = []
-evalDict = {}
-latents = [16]
 
 
 for subdomain in range(1, 2):
@@ -210,23 +209,31 @@ for subdomain in range(1, 2):
     training_loader = DataLoader(training_data, batch_size=1)
     eval_loader = DataLoader(eval_data, batch_size=1)
     
+    
+    encoder_training_loss = []
+    decoder_training_loss = []
+    encoder_eval_loss = []
+    decoder_eval_loss = []
+    evalDict = {}
+    latents = [32]
+    
     for latent_dim in latents:
         features = latent_dim
         if latent_dim not in evalDict:
             evalDict[latent_dim] = 0 
             
         CNN()  
+        
+    avg_encoder_loss = sum(encoder_eval_loss) / len(encoder_eval_loss)
+    avg_decoder_loss = sum(decoder_eval_loss) / len(decoder_eval_loss)
     
-latent_dims = []
-losses = []
     
-for key, value in evalDict.items():
-    print(key, value)
-    latent_dims.append(key)
-    losses.append(value)
-   
-plt.plot(latent_dims, losses, marker='o', label='evaluation loss')
-plt.xlabel('Latent Features')
-plt.ylabel('Evaluation Loss')
-plt.title('Latent Features vs Evaluation Loss')
+    plt.plot(subdomain, avg_encoder_loss, marker='o', label='encoder/identity')
+    plt.bar(subdomain, avg_decoder_loss, marker='^', label='decoder/evolution')
+    plt.xlabel('Subdomain')
+    plt.ylabel('Average Evaluation Loss')
+    plt.title('Encoder/Decoder Loss for Subdomain')
+    
+plt.legend(loc='upper right') 
 plt.show()
+    
