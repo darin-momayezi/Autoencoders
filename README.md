@@ -8,7 +8,7 @@ I then explored a simple 1D PDE to gain more intuiton with Autoencoders.
 
 The current work is focused on the 2-D Navier Stokes equations and finding low dimensional representations of the fine structure. Autoencoders may also be useful for quantifying the separation between high dimensional and low dimensional structure. 
 
-An example of this work is a simple autoencoder applied to numerical data of the 2D Navier-Stokes equation. This is still a work in progress and I am applying more sophisticated techniques to increase accuracy and trust in the network, but it serves as a visual example of the kind of work I am currently doing. 
+Below is a simple Autoencoder applied to time averaged numerical data of the 2D Navier-Stokes equation. It is split into sixty-four spatial subdomains with their corresponding latent dimension reported by the Autoencoder. This is still a work in progress and I am applying more sophisticated techniques to increase accuracy and trust in the network, but it serves as a visual example of the kind of work I am currently doing. 
 
 <img
   src="singlePeriodLatentDims.png"
