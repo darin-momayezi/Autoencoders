@@ -12,4 +12,4 @@ The current work is focused on the 2-D Navier Stokes equations and finding low d
   src="singlePeriodLatentDims.png"
   alt="Alt text"
   title="Optional title"
-  style="display: inline-block; margin: 0 auto; max-width: 300px">
+  style="display: inline-block; margin: 0 auto; max-width: 100px">
