@@ -9,3 +9,8 @@ I then explored a simple 1D PDE to gain more intuiton with Autoencoders.
 The current work is focused on the 2-D Navier Stokes equations and finding low dimensional representations of the fine structure. Autoencoders may also be useful for quantifying the separation between high dimensional and low dimensional structure. 
 
 <img src="/Users/darinmomayezi/Desktop/Screen Shot 2022-11-28 at 5.01.48 PM.png" alt="Alt text" title="Optional title">
+<img
+  src="/Users/darinmomayezi/Desktop/Screen Shot 2022-11-28 at 5.01.48 PM.png"
+  alt="Alt text"
+  title="Optional title"
+  style="display: inline-block; margin: 0 auto; max-width: 300px">
