@@ -52,6 +52,8 @@ save_weights = False # Save weights to computer
 save_features = False
 reload_weights = False # Reload weights from previous latent_dim, not saved on computer
 
+state_dictt = 0
+
 
 # Define the CNN
 def CNN():
@@ -59,11 +61,16 @@ def CNN():
         def __init__(self):
             super(Net, self).__init__()
             
+            '''This is a stacked autoencoder (autoencoder1 = encode1 + decode1, autoencoder2 = encode2 + decode2). The middle of the 
+            two autoencoders is decode1 and encode2. This operator 'P' maps vectors in the first latent space to the second. The two
+            latent spaces should ideally be the same, therefore P is the idenity operator and P^2 - P = 0. This is the condition that 
+            we will enforce to obtain better encodings.'''
+            
             # Output size of nxn matrix with fxf kernel and p padding is
             # (n + 2p - f + 1)x(n + 2p - f + 1)
             # n' = 512 + 2p - f + 1 = 510
             
-            self.encode = Sequential(
+            self.encode1 = Sequential(
                 Conv2d(1, int(features/4), kernel, stride=stride, padding=padding),
                 ReLU(),
                 Conv2d(int(features/4), int(features/2), kernel, stride=stride, padding=padding),
@@ -80,7 +87,7 @@ def CNN():
             
             
             # DECODER
-            self.decode = Sequential(
+            self.decode1 = Sequential(
                 # Linear Section
                 # Linear(50, 50),
                 # Sigmoid(),
@@ -93,18 +100,38 @@ def CNN():
                 Conv2d(int(features/2), int(features/4), kernel, stride=stride, padding=padding),
                 ReLU(),
                 Conv2d(int(features/4), 1, kernel, stride=stride, padding=padding))
+            
+            
+            self.encode2 = Sequential(
+                Conv2d(1, int(features/4), kernel, stride=stride, padding=padding),
+                ReLU(),
+                Conv2d(int(features/4), int(features/2), kernel, stride=stride, padding=padding),
+                ReLU(),
+                Conv2d(int(features/2), features, kernel, stride=stride, padding=padding),
+                Dropout2d(0.2))
+            
+            
+            # DECODER
+            self.decode2 = Sequential(
+                Conv2d(features, int(features/2), kernel, stride=stride, padding=padding),
+                ReLU(),
+                Conv2d(int(features/2), int(features/4), kernel, stride=stride, padding=padding),
+                ReLU(),
+                Conv2d(int(features/4), 1, kernel, stride=stride, padding=padding))
 
             
         def forward(self, x):
             
-            encoded = self.encode(x)
+            encoded1 = self.encode1(x)
             if save_features:
                 # Save features for dimensionality analysis
                 for i in range(features):
-                  matrix = pd.DataFrame(encoded[0][i].detach().numpy())
+                  matrix = pd.DataFrame(encoded1[0][i].detach().numpy())
                   matrix.to_csv(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Features/feature{i}.csv')
-            decoded = self.decode(encoded)
-            return decoded
+            decoded1 = self.decode1(encoded1)
+            encoded2 = self.encode2(decoded1)
+            decoded2 = self.decode2(encoded2)
+            return (encoded1, encoded2, decoded2)
 
     def evaluate(model):
         model.eval()
@@ -113,18 +140,22 @@ def CNN():
         for input in eval_loader:
             input = torch.unsqueeze(input, 1)
             eval_prediction = model(input)
-            losse = criterion(input, eval_prediction)
-            running_eval_loss += losse.item()
+            loss_outputs = criterion(input, eval_prediction[2])
+            loss_identity = criterion(eval_prediction[0], eval_prediction[1])
+            running_eval_loss += loss_identity.item()
         
         epoch_eval_loss = running_eval_loss / len(eval_loader)
         eval_loss.append(epoch_eval_loss)
-        print('evaluation loss: ', epoch_eval_loss)
+        print('evaluation loss: ', epoch_eval_loss, step)
         
         
     model = Net()
     criterion = MSELoss()
     optimizer = Adam(model.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=40)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=30)
+    if step == 2:
+        model.load_state_dict(state_dictt, strict=False)
+        model.eval()
     
     # Reuse weights for more consistent graphs
     if latent_dim == 8 and reload_weights:
@@ -141,7 +172,7 @@ def CNN():
             
 
     # Training Loop
-    for e in range(200):
+    for e in range(2):
         model.train()
         running_loss = 0
         
@@ -149,11 +180,13 @@ def CNN():
         for input in training_loader:
             input = torch.unsqueeze(input, 1)
             prediction = model(input)
-            loss = criterion(input, prediction)
+            loss_outputs = criterion(input, prediction[2])
+            loss_identity = criterion(prediction[0], prediction[1])
             optimizer.zero_grad()
-            loss.backward()
+            # loss_outputs.backward(retain_graph=True)
+            loss_identity.backward(retain_graph=True)
             optimizer.step()
-            running_loss += loss.item()
+            running_loss += loss_identity.item()
             index += 1
             
         epoch_loss = running_loss/len(training_loader)
@@ -165,18 +198,22 @@ def CNN():
         for param_group in optimizer.param_groups:
             print('lr: ', param_group['lr'])
         print(f'epoch: {e+1}')
-        print('training loss: ', epoch_loss)
+        # print('training loss: ', epoch_loss)
         print('latent dimension: ', latent_dim)
         print('subdomain: ', subdomain)
     evalDict[latent_dim] = eval_loss[-1]
     
     if save_weights and latent_dim == latent_dims[-1]:  # Save weights upon last latent_dim (or upon other choice)
         torch.save(model.state_dict(), f'/Users/darinmomayezi/Desktop/Vorticity_single_period/weights{subdomain}.pth')
+        
+    if step == 1:
+        state_dictt = model.state_dict()
+        
             
 
 
 # Run CNN and plot results for each subdomain in vorticity data
-for subdomain in range(1, 65):
+for subdomain in range(2, 65):
     
     omega_sub = f'omega{subdomain}_sub'  # key to access data in dictionary when using loadmat
     
@@ -192,34 +229,37 @@ for subdomain in range(1, 65):
     
     # Store weights for reuse
     weight_dict = {}
-    
+
     losses = []
         
     training_loss = []  
     eval_loss = []
     evalDict = {}
-    
-    latent_dims = [8, 16, 24, 32, 40]
+
+
+    latent_dims = [8, 16, 24, 32, 40, 48, 56, 64]
     for latent_dim in latent_dims:
         features = latent_dim
         
         if latent_dim not in evalDict:
             evalDict[latent_dim] = 0 
             
-        CNN()  
+        for step in range(1, 3):  # Step 1 learns identity, step 2 learns decoding
+            
+            CNN()
         
         error_increasing = True
-        while error_increasing:
+        while error_increasing:  # Make sure losses are sufficiently decreasing
             if latent_dim == latent_dims[0]:  # skip first loss
                 losses.append(evalDict[latent_dim])
                 error_increasing = False
             
             
-            elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) < 1:
+            elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) < 4:
                 losses.append(evalDict[latent_dim])
                 error_increasing = False
             
-            elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) > 1:
+            elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) > 4:
                 CNN()
                 
         if latent_dim == latent_dims[-1]: # Plot results after running the last latent dimension
@@ -235,7 +275,7 @@ for subdomain in range(1, 65):
                 if index == 0:
                     yticks.append(losses[index])
                     yticks_labels.append(str(round(losses[index], 8)))
-                elif abs(losses[index - 1] - losses[index]) >= 10:  # Label if at least 5x smaller than previous loss
+                elif (losses[index - 1] / losses[index]) >= 2:  # Label if at least 5x smaller than previous loss
                     yticks.append(losses[index])
                     yticks_labels.append(str(round(losses[index], 8)))
             plt.yticks(yticks, yticks_labels)
@@ -244,7 +284,6 @@ for subdomain in range(1, 65):
             plt.ylabel('Evaluation loss')
             plt.title(f'Convlutional Autoencoder - 2D NSE - Subdomain {subdomain}')
             plt.show()
-    
+
             # plt.savefig(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/AE_2D_NSE_subdomain{subdomain}.png')
-
-
+    break
