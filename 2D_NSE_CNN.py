@@ -51,12 +51,11 @@ padding = 1
 save_weights = False # Save weights to computer
 save_features = False
 reload_weights = False # Reload weights from previous latent_dim, not saved on computer
-
-state_dictt = 0
+step = 0
 
 
 # Define the CNN
-def CNN():
+def CNN(model_dict):
     class Net(Module):
         def __init__(self):
             super(Net, self).__init__()
@@ -77,24 +76,10 @@ def CNN():
                 ReLU(),
                 Conv2d(int(features/2), features, kernel, stride=stride, padding=padding),
                 Dropout2d(0.2))
-                
-                
-                # Linear Section
-                # Flatten(start_dim=0),
-                # Linear(int(10 * 64 * 50 * 50), 50),
-                # Sigmoid(),
-                # Linear(50, 50))
             
             
             # DECODER
             self.decode1 = Sequential(
-                # Linear Section
-                # Linear(50, 50),
-                # Sigmoid(),
-                # Linear(50, int(10 * 64 * 50 * 50)),
-                # Unflatten(dim=0, unflattened_size=(10, 64, 50, 50)),
-            
-               
                 Conv2d(features, int(features/2), kernel, stride=stride, padding=padding),
                 ReLU(),
                 Conv2d(int(features/2), int(features/4), kernel, stride=stride, padding=padding),
@@ -131,7 +116,11 @@ def CNN():
             decoded1 = self.decode1(encoded1)
             encoded2 = self.encode2(decoded1)
             decoded2 = self.decode2(encoded2)
-            return (encoded1, encoded2, decoded2)
+            if step == 1:
+                return (encoded1, encoded2)
+            elif step == 2:
+                return decoded2
+
 
     def evaluate(model):
         model.eval()
@@ -142,7 +131,13 @@ def CNN():
             eval_prediction = model(input)
             loss_outputs = criterion(input, eval_prediction[2])
             loss_identity = criterion(eval_prediction[0], eval_prediction[1])
-            running_eval_loss += loss_identity.item()
+            
+            if step == 1:
+                running_eval_loss += loss_identity.item()
+                
+            elif step == 2:
+                running_eval_loss += loss_outputs.item()
+                
         
         epoch_eval_loss = running_eval_loss / len(eval_loader)
         eval_loss.append(epoch_eval_loss)
@@ -153,9 +148,7 @@ def CNN():
     criterion = MSELoss()
     optimizer = Adam(model.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=30)
-    if step == 2:
-        model.load_state_dict(state_dictt, strict=False)
-        model.eval()
+                
     
     # Reuse weights for more consistent graphs
     if latent_dim == 8 and reload_weights:
@@ -170,9 +163,8 @@ def CNN():
             model_dict[k] = v  # Load recycled weights into current model
         model.state_dict().update(model_dict)
             
-
-    # Training Loop
-    for e in range(2):
+    
+    def train_identity(model, criterion):
         model.train()
         running_loss = 0
         
@@ -180,34 +172,155 @@ def CNN():
         for input in training_loader:
             input = torch.unsqueeze(input, 1)
             prediction = model(input)
-            loss_outputs = criterion(input, prediction[2])
-            loss_identity = criterion(prediction[0], prediction[1])
             optimizer.zero_grad()
-            # loss_outputs.backward(retain_graph=True)
-            loss_identity.backward(retain_graph=True)
-            optimizer.step()
+            loss_identity = criterion(prediction[0], prediction[1])
+            loss_identity.backward()
             running_loss += loss_identity.item()
             index += 1
-            
+        optimizer.step()
         epoch_loss = running_loss/len(training_loader)
         training_loss.append(epoch_loss)
         scheduler.step(epoch_loss)
         
-        evaluate(model)
         
-        for param_group in optimizer.param_groups:
-            print('lr: ', param_group['lr'])
-        print(f'epoch: {e+1}')
-        # print('training loss: ', epoch_loss)
-        print('latent dimension: ', latent_dim)
-        print('subdomain: ', subdomain)
-    evalDict[latent_dim] = eval_loss[-1]
+    def evaluate_identity(model, criterion):
+        model.eval()
+        running_eval_loss = 0
+        
+        for input in eval_loader:
+            input = torch.unsqueeze(input, 1)
+            eval_prediction = model(input)
+            loss_identity = criterion(eval_prediction[0], eval_prediction[1])
+            running_eval_loss += loss_identity.item()
+                
+        epoch_eval_loss = running_eval_loss / len(eval_loader)
+        eval_loss.append(epoch_eval_loss)
+        print('evaluation loss: ', epoch_eval_loss, step)
+        
+        
+    def train_encoder(model, criterion):
+        model.train()
+        running_loss = 0
+        
+        index = 0
+        for input in training_loader:
+            input = torch.unsqueeze(input, 1)
+            prediction = model(input)
+            optimizer.zero_grad()
+            loss_outputs = criterion(input, prediction)
+            loss_outputs.backward()
+            running_loss += loss_outputs.item()
+            index += 1
+        
+        optimizer.step()
+        epoch_loss = running_loss/len(training_loader)
+        training_loss.append(epoch_loss)
+        scheduler.step(epoch_loss)
+        
+        
+    def evaluate_encoder(model, criterion):
+        model.eval()
+        running_eval_loss = 0
+        
+        for input in eval_loader:
+            input = torch.unsqueeze(input, 1)
+            eval_prediction = model(input)
+            loss_outputs = criterion(input, eval_prediction)
+            running_eval_loss += loss_outputs.item()
+                
+        
+        epoch_eval_loss = running_eval_loss / len(eval_loader)
+        eval_loss.append(epoch_eval_loss)
+        print('evaluation loss: ', epoch_eval_loss, step)
+        
+        
+    ##### Training Loop #####
+    for step in range(1, 3):
+        step = step
+        
+        if step == 1:  # Learn identity between encodings
+            for epoch in range(20):
+                train_identity(model, criterion)
+                evaluate_identity(model, criterion)
+            model_dict[latent_dim] = model.state_dict()
+                
+        if step == 2:  # Learn encoder
+            
+            model.load_state_dict(model_dict[latent_dim], strict=False)
+            model.eval()
+            
+            for i, param in enumerate(model.named_parameters()):
+                    name = param[0]
+                    if 'decode1' or 'encode2' in name:
+                        param[1].requires_grad = False
+                        
+            for epoch in range(20):
+                train_encoder(model, criterion)
+                evaluate_encoder(model, criterion)
+                
+            for i, param in enumerate(model.named_parameters()):
+                    name = param[0]
+                    if 'decode1' or 'encode2' in name:
+                        param[1].requires_grad = True
+            
+        
+    # Training Loop
+    # for e in range(20):
+    #     model.train()
+    #     running_loss = 0
+        
+    #     index = 0
+    #     for input in training_loader:
+    #         input = torch.unsqueeze(input, 1)
+    #         prediction = model(input)
+    #         optimizer.zero_grad()
+            
+    #         if step == 1:
+    #             loss_identity = criterion(prediction[0], prediction[1])
+    #             loss_identity.backward()
+    #             running_loss += loss_identity.item()
+                
+    #         elif step == 2:
+    #             for i, param in enumerate(model.named_parameters()):
+    #                 name = param[0]
+    #                 if 'decode1' or 'encode2' in name:
+    #                     param[1].requires_grad = False
+                
+    #             loss_outputs = criterion(input, prediction[2])
+    #             loss_outputs.backward()
+    #             running_loss += loss_outputs.item()
+                
+    #             for i, param in enumerate(model.named_parameters()):
+    #                 name = param[0]
+    #                 if 'decode1' or 'encode2' in name:
+    #                     param[1].requires_grad = True
+            
+    #         optimizer.step()
+    #         index += 1
+            
+    #     epoch_loss = running_loss/len(training_loader)
+    #     training_loss.append(epoch_loss)
+    #     scheduler.step(epoch_loss)
+        
+    #     # Turn gradients back on (technicality)
+    #     for i, param in enumerate(model.named_parameters()):
+    #         name = param[0]
+    #         if 'decode1' or 'encode2' in name:
+    #             param[1].requires_grad = True
+        
+    #     evaluate(model)
+        
+    #     for param_group in optimizer.param_groups:
+    #         print('lr: ', param_group['lr'])
+    #     print(f'epoch: {e+1}')
+    #     print('latent dimension: ', latent_dim)
+    #     print('subdomain: ', subdomain)
+    # evalDict[latent_dim] = eval_loss[-1]
+    # model_dict[latent_dim] = model.state_dict()
     
-    if save_weights and latent_dim == latent_dims[-1]:  # Save weights upon last latent_dim (or upon other choice)
+    if save_weights and latent_dim == latent_dims[-1]:  # Save weights upon last latent_dim (or other choice)
         torch.save(model.state_dict(), f'/Users/darinmomayezi/Desktop/Vorticity_single_period/weights{subdomain}.pth')
-        
-    if step == 1:
-        state_dictt = model.state_dict()
+      
         
             
 
@@ -235,6 +348,7 @@ for subdomain in range(2, 65):
     training_loss = []  
     eval_loss = []
     evalDict = {}
+    model_dict = {}
 
 
     latent_dims = [8, 16, 24, 32, 40, 48, 56, 64]
@@ -242,12 +356,11 @@ for subdomain in range(2, 65):
         features = latent_dim
         
         if latent_dim not in evalDict:
-            evalDict[latent_dim] = 0 
+            evalDict[latent_dim] = 0  
             
-        for step in range(1, 3):  # Step 1 learns identity, step 2 learns decoding
-            
-            CNN()
-        
+        CNN(model_dict=model_dict)
+
+    
         error_increasing = True
         while error_increasing:  # Make sure losses are sufficiently decreasing
             if latent_dim == latent_dims[0]:  # skip first loss
@@ -260,7 +373,7 @@ for subdomain in range(2, 65):
                 error_increasing = False
             
             elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) > 4:
-                CNN()
+                CNN(model_dict)
                 
         if latent_dim == latent_dims[-1]: # Plot results after running the last latent dimension
             # Graph results
