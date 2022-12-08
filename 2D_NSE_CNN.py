@@ -116,38 +116,20 @@ def CNN(model_dict):
             decoded1 = self.decode1(encoded1)
             encoded2 = self.encode2(decoded1)
             decoded2 = self.decode2(encoded2)
+            
             if step == 1:
                 return (encoded1, encoded2)
             elif step == 2:
                 return decoded2
-
-
-    def evaluate(model):
-        model.eval()
-        running_eval_loss = 0
-        
-        for input in eval_loader:
-            input = torch.unsqueeze(input, 1)
-            eval_prediction = model(input)
-            loss_outputs = criterion(input, eval_prediction[2])
-            loss_identity = criterion(eval_prediction[0], eval_prediction[1])
-            
-            if step == 1:
-                running_eval_loss += loss_identity.item()
-                
-            elif step == 2:
-                running_eval_loss += loss_outputs.item()
-                
-        
-        epoch_eval_loss = running_eval_loss / len(eval_loader)
-        eval_loss.append(epoch_eval_loss)
-        print('evaluation loss: ', epoch_eval_loss, step)
-        
+ 
         
     model = Net()
     criterion = MSELoss()
     optimizer = Adam(model.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=30)
+    if step == 2:
+        model.load_state_dict(model_dict[latent_dim], strict=False)
+        model.eval()
                 
     
     # Reuse weights for more consistent graphs
@@ -168,7 +150,6 @@ def CNN(model_dict):
         model.train()
         running_loss = 0
         
-        index = 0
         for input in training_loader:
             input = torch.unsqueeze(input, 1)
             prediction = model(input)
@@ -176,8 +157,7 @@ def CNN(model_dict):
             loss_identity = criterion(prediction[0], prediction[1])
             loss_identity.backward()
             running_loss += loss_identity.item()
-            index += 1
-        optimizer.step()
+            optimizer.step()
         epoch_loss = running_loss/len(training_loader)
         training_loss.append(epoch_loss)
         scheduler.step(epoch_loss)
@@ -195,14 +175,13 @@ def CNN(model_dict):
                 
         epoch_eval_loss = running_eval_loss / len(eval_loader)
         eval_loss.append(epoch_eval_loss)
-        print('evaluation loss: ', epoch_eval_loss, step)
+        print('evaluation loss: ', epoch_eval_loss, step, latent_dim)
         
         
     def train_encoder(model, criterion):
         model.train()
         running_loss = 0
         
-        index = 0
         for input in training_loader:
             input = torch.unsqueeze(input, 1)
             prediction = model(input)
@@ -210,9 +189,7 @@ def CNN(model_dict):
             loss_outputs = criterion(input, prediction)
             loss_outputs.backward()
             running_loss += loss_outputs.item()
-            index += 1
-        
-        optimizer.step()
+            optimizer.step()
         epoch_loss = running_loss/len(training_loader)
         training_loss.append(epoch_loss)
         scheduler.step(epoch_loss)
@@ -231,98 +208,46 @@ def CNN(model_dict):
         
         epoch_eval_loss = running_eval_loss / len(eval_loader)
         eval_loss.append(epoch_eval_loss)
-        print('evaluation loss: ', epoch_eval_loss, step)
+        print('evaluation loss: ', epoch_eval_loss, step, latent_dim)
+        evalDict[latent_dim] = epoch_eval_loss
         
-        
-    ##### Training Loop #####
-    for step in range(1, 3):
-        step = step
-        
-        if step == 1:  # Learn identity between encodings
-            for epoch in range(20):
-                train_identity(model, criterion)
-                evaluate_identity(model, criterion)
-            model_dict[latent_dim] = model.state_dict()
-                
-        if step == 2:  # Learn encoder
-            
-            model.load_state_dict(model_dict[latent_dim], strict=False)
-            model.eval()
-            
-            for i, param in enumerate(model.named_parameters()):
-                    name = param[0]
-                    if 'decode1' or 'encode2' in name:
-                        param[1].requires_grad = False
-                        
-            for epoch in range(20):
-                train_encoder(model, criterion)
-                evaluate_encoder(model, criterion)
-                
-            for i, param in enumerate(model.named_parameters()):
-                    name = param[0]
-                    if 'decode1' or 'encode2' in name:
-                        param[1].requires_grad = True
-            
-        
-    # Training Loop
-    # for e in range(20):
-    #     model.train()
-    #     running_loss = 0
-        
-    #     index = 0
-    #     for input in training_loader:
-    #         input = torch.unsqueeze(input, 1)
-    #         prediction = model(input)
-    #         optimizer.zero_grad()
-            
-    #         if step == 1:
-    #             loss_identity = criterion(prediction[0], prediction[1])
-    #             loss_identity.backward()
-    #             running_loss += loss_identity.item()
-                
-    #         elif step == 2:
-    #             for i, param in enumerate(model.named_parameters()):
-    #                 name = param[0]
-    #                 if 'decode1' or 'encode2' in name:
-    #                     param[1].requires_grad = False
-                
-    #             loss_outputs = criterion(input, prediction[2])
-    #             loss_outputs.backward()
-    #             running_loss += loss_outputs.item()
-                
-    #             for i, param in enumerate(model.named_parameters()):
-    #                 name = param[0]
-    #                 if 'decode1' or 'encode2' in name:
-    #                     param[1].requires_grad = True
-            
-    #         optimizer.step()
-    #         index += 1
-            
-    #     epoch_loss = running_loss/len(training_loader)
-    #     training_loss.append(epoch_loss)
-    #     scheduler.step(epoch_loss)
-        
-    #     # Turn gradients back on (technicality)
-    #     for i, param in enumerate(model.named_parameters()):
-    #         name = param[0]
-    #         if 'decode1' or 'encode2' in name:
-    #             param[1].requires_grad = True
-        
-    #     evaluate(model)
-        
-    #     for param_group in optimizer.param_groups:
-    #         print('lr: ', param_group['lr'])
-    #     print(f'epoch: {e+1}')
-    #     print('latent dimension: ', latent_dim)
-    #     print('subdomain: ', subdomain)
-    # evalDict[latent_dim] = eval_loss[-1]
-    # model_dict[latent_dim] = model.state_dict()
     
+    ##### Training Loop #####
+    if step == 1:
+        for epoch in range(200):
+            train_identity(model, criterion)
+            evaluate_identity(model, criterion)
+        model_dict[latent_dim] = model.state_dict()
+        
+    
+    elif step == 2:
+        
+        for i, param in enumerate(model.named_parameters()):
+            name = param[0]
+
+            if 'decode1' in name:
+                param[1].requires_grad = False  
+                
+            elif 'encode2' in name:
+                param[1].requires_grad = False 
+    
+        for epoch in range(200):
+            train_encoder(model, criterion)
+            evaluate_encoder(model, criterion)
+            
+        for i, param in enumerate(model.named_parameters()):
+            name = param[0]
+    
+            if 'decode1' in name:
+                param[1].requires_grad = True  
+                
+            elif 'encode2' in name:
+                param[1].requires_grad = True 
+        
+  
     if save_weights and latent_dim == latent_dims[-1]:  # Save weights upon last latent_dim (or other choice)
         torch.save(model.state_dict(), f'/Users/darinmomayezi/Desktop/Vorticity_single_period/weights{subdomain}.pth')
-      
-        
-            
+
 
 
 # Run CNN and plot results for each subdomain in vorticity data
@@ -351,29 +276,30 @@ for subdomain in range(2, 65):
     model_dict = {}
 
 
-    latent_dims = [8, 16, 24, 32, 40, 48, 56, 64]
+    latent_dims = [8, 16, 24, 32, 40]
     for latent_dim in latent_dims:
         features = latent_dim
         
         if latent_dim not in evalDict:
             evalDict[latent_dim] = 0  
             
-        CNN(model_dict=model_dict)
+        for step in range(1, 3):
+            CNN(model_dict=model_dict)
 
     
-        error_increasing = True
-        while error_increasing:  # Make sure losses are sufficiently decreasing
-            if latent_dim == latent_dims[0]:  # skip first loss
-                losses.append(evalDict[latent_dim])
-                error_increasing = False
+        # error_increasing = True
+        # while error_increasing:  # Make sure losses are sufficiently decreasing
+        #     if latent_dim == latent_dims[0]:  # skip first loss
+        #         losses.append(evalDict[latent_dim])
+        #         error_increasing = False
             
             
-            elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) < 4:
-                losses.append(evalDict[latent_dim])
-                error_increasing = False
+        #     elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) < 4:
+        #         losses.append(evalDict[latent_dim])
+        #         error_increasing = False
             
-            elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) > 4:
-                CNN(model_dict)
+        #     elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) > 4:
+        #         CNN(model_dict)
                 
         if latent_dim == latent_dims[-1]: # Plot results after running the last latent dimension
             # Graph results
@@ -400,3 +326,4 @@ for subdomain in range(2, 65):
 
             # plt.savefig(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/AE_2D_NSE_subdomain{subdomain}.png')
     break
+
