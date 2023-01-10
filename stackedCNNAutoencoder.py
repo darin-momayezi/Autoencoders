@@ -5,6 +5,8 @@ dimensionaliy of the system. This code ensures decreasing evaluation losses by t
 saving (if save_weights = True) and reusing (if reload_weights = True) those that produce desirable results.'''
 
 import os
+from os import makedirs
+from os.path import exists
 import torch
 import pandas as pd
 import numpy as np
@@ -12,8 +14,10 @@ from scipy.io import loadmat
 import matplotlib.pyplot as plt
 from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
-from torch.nn import (ReLU, MSELoss, Sequential, Conv2d, Module, ConvTranspose2d)
+from torch.nn import (Linear, ReLU, MSELoss, Sequential, Conv1d, Conv2d, Conv3d, Sigmoid, MaxUnpool2d, Dropout2d, AvgPool2d,
+                      MaxPool2d, Module, Softmax, BatchNorm2d, Dropout, Flatten, Unflatten, ConvTranspose2d)
 from torch.optim import Adam
+from sklearn.decomposition import PCA
 
 # Creating custom data set from folder
 class NSEDataset(Dataset):
@@ -37,6 +41,26 @@ def normalize(matrix):
     norm = np.linalg.norm(matrix[0], 1)
     matrix = matrix/norm
     return matrix
+
+def feature_dimensionality(feature):
+    '''Returns numebr of principle components in feature.
+    
+            Parameters:
+                feature (array) : feature learned from CNN
+                
+            Outputs:
+                num_principle_components (int) : number of principle components explaining 1/10 (10 %) of data or more.'''
+                
+    pca = PCA(n_components=10)  # Choose n_components s.t. includes components w/ variance >= 1/10, not kown a priori
+    pca.fit(feature)
+    variances = pca.explained_variance_ratio_    
+    
+    num_principle_components = 0
+    for variance in variances:  # Variance = explanatory power
+        if variance >= 1/10:
+            num_principle_components += 1
+            
+    return num_principle_components
            
 
 # Tunable Parameters
@@ -44,10 +68,11 @@ features = 10 # latent_dim
 kernel = 3
 stride = 1
 padding = 1
+epochs = 200
 
 save_weights = False # Save weights to computer
 save_features = False
-reload_weights = False # Reload weights from previous latent_dim, not saved on computer
+reload_weights = True # Reload weights from previous latent_dim, not saved on computer
 step = 0
 
 
@@ -90,218 +115,122 @@ def CNN():
                 ConvTranspose2d(features, int(features/2), kernel, stride=stride, padding=padding),
                 ReLU(),
                 ConvTranspose2d(int(features/2), 1, kernel, stride=stride, padding=padding))
-            
 
             
         def forward(self, x):
             
-
-            
-            x_noisy = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-            
-            for index, number in enumerate(x[-1][0][0]):
-                print(number, x_noisy[-1][0][0][index])
-                if number.item() != x_noisy[-1][0][0][index].item():
-                    print(number.item(), x_noisy[-1][0][0][index].item())
-                    break
-                
+            # x = x * (Variable(x.data.new(x.size()).normal_(0, 0.01)) > -.1).type_as(x)
             
             encoded1 = self.encode1(x)
+            
             if save_features:
                 # Save features for dimensionality analysis
                 for i in range(features):
                   matrix = pd.DataFrame(encoded1[0][i].detach().numpy())
                   matrix.to_csv(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Features/feature{i}.csv')
+                  
             decoded1 = self.decode1(encoded1)
             encoded2 = self.encode2(decoded1)
             decoded2 = self.decode2(encoded2)
             
-            return (encoded1, decoded1, encoded2, decoded2)
+            total_principle_components = 0
+            
+            if latent_dim > latent_dims[0] and (evalDict[latent_dim] / evalDict[latent_dim - latent_dims[0]]) <= 0.2 and epoch == (epochs-1):
+
+                for i in range(features):  # Save features for dimensionality analysis 
+                    feature = pd.DataFrame(encoded2[0][i].detach().numpy())
+                    total_principle_components += feature_dimensionality(feature)
+                    
+                    print(f'dimensionality: {i} ', total_principle_components)
+                    if i == 9:
+                        print('------------------')                  
+                    if save_features:
+                        feature.to_csv(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Features/Subdomain{subdomain}/feature{i}.csv')
+         
+            
+            return (encoded1, decoded1, encoded2, decoded2, total_principle_components)
  
         
     model = Net()
     criterion = MSELoss()
     optimizer = Adam(model.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=30)
-    if step > 1:
-        model.load_state_dict(weight_dict[latent_dim], strict=False)
-        model.eval()
-                
-    
-#  Reuse weights for more consistent graphs
-    # def reload_weights():
-    #     if latent_dim == 8:
-    #         weight_dict[latent_dim] = model.state_dict()  # Store weights in weight_dict
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=30)
+   
+   
+    # Reuse weights for more consistent graphs
+    def reload_weights():
+        if latent_dim == latent_dims[0]:
+            weight_dict[latent_dim] = model.state_dict()  # Store weights in weight_dict
             
-    #     elif latent_dim > 8:
-    #         weight_dict[latent_dim] = model.state_dict()  # Store weights in weight_dict
-    #         pretrained_dict = weight_dict[latent_dim - 8]  # Collect weights from weight_dict
-    #         model_dict = model.state_dict()
+        elif latent_dim > latent_dims[0]:
+            # weight_dict[latent_dim] = model.state_dict()  # Store weights in weight_dict
+            pretrained_dict = weight_dict[latent_dim - latent_dims[0]]  # Collect weights from weight_dict
+            model_dict = model.state_dict()
+            if latent_dim > latent_dims[1]:
+                weight_dict[latent_dim - int(latent_dims[0]*2)] = 0  # Delete already reused weights no longer needed
             
-    #         for k, v in pretrained_dict.items():
-    #             model_dict[k] = v  # Load recycled weights into current model
-    #         model.state_dict().update(model_dict)
-    #         model.eval()
-    # if reload_weights:
-    #     reload_weights()
+            for k, v in pretrained_dict.items():
+                model_dict[k] = v  # Load recycled weights into current model
+            model.state_dict().update(model_dict)
+            model.eval()
+    if reload_weights:
+        reload_weights()
             
-            
-    
-    def train_all(model, criterion):
-        model.train()
-        running_loss = 0
         
-        for input in training_loader:
-            input = torch.unsqueeze(input, 1)
-            prediction = model(input)
-            optimizer.zero_grad()
-            loss = criterion(input, prediction[-1])
-            loss.backward()
-            running_loss += loss.item()
-            optimizer.step()
-        epoch_loss = running_loss / len(training_loader)
-        scheduler.step(epoch_loss)
-        
-    def evaluate_all(model, criterion):
+    def evaluate():
         model.eval()
         running_eval_loss = 0
         
         for input in eval_loader:
             input = torch.unsqueeze(input, 1)
             eval_prediction = model(input)
-            loss = criterion(input, eval_prediction[-1])
+            loss = criterion(input, eval_prediction[3])
             running_eval_loss += loss.item()
                 
         epoch_eval_loss = running_eval_loss / len(eval_loader)
         eval_loss.append(epoch_eval_loss)
-        print('evaluation loss: ', epoch_eval_loss, step, latent_dim)
-        
-    
-    def train_identity(model, criterion):
-        model.train()
-        running_loss = 0
-        
-        for input in training_loader:
-            input = torch.unsqueeze(input, 1)
-            prediction = model(input)
-            optimizer.zero_grad()
-            loss_identity = criterion(prediction[0], prediction[2])
-            loss_identity.backward()
-            running_loss += loss_identity.item()
-            optimizer.step()
-        epoch_loss = running_loss/len(training_loader)
-        training_loss.append(epoch_loss)
-        scheduler.step(epoch_loss)
-        
-        
-    def evaluate_identity(model, criterion):
-        model.eval()
-        running_eval_loss = 0
-        
-        for input in eval_loader:
-            input = torch.unsqueeze(input, 1)
-            eval_prediction = model(input)
-            loss_identity = criterion(eval_prediction[0], eval_prediction[2])
-            running_eval_loss += loss_identity.item()
-                
-        epoch_eval_loss = running_eval_loss / len(eval_loader)
-        eval_loss.append(epoch_eval_loss)
-        print('evaluation loss: ', epoch_eval_loss, step, latent_dim)
-        
-        
-    def train_encoder(model, criterion):
-        model.train()
-        running_loss = 0
-        
-        for input in training_loader:
-            input = torch.unsqueeze(input, 1)
-            prediction = model(input)
-            optimizer.zero_grad()
-            loss_outputs = criterion(input, prediction[-1])
-            loss_outputs.backward()
-            running_loss += loss_outputs.item()
-            optimizer.step()
-        epoch_loss = running_loss/len(training_loader)
-        training_loss.append(epoch_loss)
-        scheduler.step(epoch_loss)
-        
-        
-    def evaluate_encoder(model, criterion):
-        model.eval()
-        running_eval_loss = 0
-        
-        for input in eval_loader:
-            input = torch.unsqueeze(input, 1)
-            eval_prediction = model(input)
-            loss_outputs = criterion(input, eval_prediction[-1])
-            running_eval_loss += loss_outputs.item()
-                
-        
-        epoch_eval_loss = running_eval_loss / len(eval_loader)
-        eval_loss.append(epoch_eval_loss)
-        print('evaluation loss: ', epoch_eval_loss, step, latent_dim)
         evalDict[latent_dim] = epoch_eval_loss
+        print('evaluation loss: ', epoch_eval_loss, epoch, latent_dim)
+        return eval_prediction[-1]
+        
+    def train():
+        model.train()
+        running_loss = 0
+        identity_loss = 0
+        
+        for input in training_loader:
+            optimizer.zero_grad()
+            input = torch.unsqueeze(input, 1)
+            prediction = model(input)
+    
+            loss_identity = criterion(prediction[0], prediction[2])
+            loss_output = criterion(input, prediction[3])
+            total_loss = loss_identity + loss_output
+            total_loss.backward()
+            # loss_identity.backward(retain_graph=True)
+            # loss_output.backward(retain_graph=True)
+            # running_loss += loss_output.item()
+            identity_loss += loss_identity.item()
+            running_loss += total_loss.item()
+            optimizer.step()
+        epoch_loss = running_loss/len(training_loader)
+        epoch_identity_loss = identity_loss/len(training_loader)
+        print('identity loss: ', epoch_identity_loss)
+        training_loss.append(epoch_loss)
+        scheduler.step(epoch_loss)
+        # print(epoch_loss)
+        if epoch == epochs - 1:
+            total_dimensionality[subdomain] = evaluate()
+        else:
+            evaluate()
+
         
     
     ##### Training Loop #####
-    if step == 1:  # Train whole autoencoder
-        
-        for epoch in range(1):
-            train_all(model, criterion)
-            evaluate_all(model, criterion)
-        weight_dict[latent_dim] = model.state_dict()
-            
+    for epoch in range(epochs):
+        train()
     
-    elif step == 2:  # Train identity transform
-        for i, param in enumerate(model.named_parameters()):
-            name = param[0]
-
-            if 'encode1' in name:
-                param[1].requires_grad = False  
-                
-            elif 'decode2' in name:
-                param[1].requires_grad = False 
-                
-        for epoch in range(200):
-            train_identity(model, criterion)
-            evaluate_identity(model, criterion)
-        weight_dict[latent_dim] = model.state_dict()
-        
-        for i, param in enumerate(model.named_parameters()):
-            name = param[0]
-
-            if 'encode1' in name:
-                param[1].requires_grad = True  
-                
-            elif 'decode2' in name:
-                param[1].requires_grad = True 
-        
-    
-    elif step == 3:  # Train outer en coding and decoding
-        
-        for i, param in enumerate(model.named_parameters()):
-            name = param[0]
-
-            if 'decode1' in name:
-                param[1].requires_grad = False  
-                
-            elif 'encode2' in name:
-                param[1].requires_grad = False 
-    
-        for epoch in range(200):
-            train_encoder(model, criterion)
-            evaluate_encoder(model, criterion)
-        weight_dict[latent_dim] = model.state_dict()
-            
-        for i, param in enumerate(model.named_parameters()):
-            name = param[0]
-    
-            if 'decode1' in name:
-                param[1].requires_grad = True  
-                
-            elif 'encode2' in name:
-                param[1].requires_grad = True 
-        
+    weight_dict[latent_dim] = model.state_dict()
   
     if save_weights and latent_dim == latent_dims[-1]:  # Save weights upon last latent_dim (or other choice)
         torch.save(model.state_dict(), f'/Users/darinmomayezi/Desktop/Vorticity_single_period/weights{subdomain}.pth')
@@ -309,79 +238,86 @@ def CNN():
 
 
 # Run CNN and plot results for each subdomain in vorticity data
-for subdomain in range(3, 65):
-    
-    omega_sub = f'omega{subdomain}_sub'  # key to access data in dictionary when using loadmat
-    
-    # Load Data
-    training_data = NSEDataset(root_dir=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_train',
-                annotation_file=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_train/omega_names_subdomain.csv',
-                transform=normalize)
-    eval_data = NSEDataset(root_dir=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test',
-                annotation_file=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/omega_names_subdomain_test.csv',
-                transform=normalize)
-    training_loader = DataLoader(training_data, batch_size=5)
-    eval_loader = DataLoader(eval_data, batch_size=5)
-    
-    # Store weights for reuse
-    weight_dict = {}
-
-    losses = []
+total_dimensionality = {}
+for iteration in range(1, 4):
+    for subdomain in range(17, 65):
         
-    training_loss = []  
-    eval_loss = []
-    evalDict = {}
-
-
-    latent_dims = [16, 24, 32, 40]
-    for latent_dim in latent_dims:
+        omega_sub = f'omega{subdomain}_sub'  # key to access data in dictionary when using loadmat
         
-        features = latent_dim
+        # Load Data
+        training_data = NSEDataset(root_dir=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_train',
+                    annotation_file=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_train/omega_names_subdomain.csv',
+                    transform=normalize)
+        eval_data = NSEDataset(root_dir=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test',
+                    annotation_file=f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/omega_names_subdomain_test.csv',
+                    transform=normalize)
+        training_loader = DataLoader(training_data, batch_size=10)
+        eval_loader = DataLoader(eval_data, batch_size=10)
         
-        if latent_dim not in evalDict:
-            evalDict[latent_dim] = 0  
-            
-        for step in range(1, 2):
-            CNN()
-            break
+        # Store weights for reuse
+        weight_dict = {}
 
-        losses.append(evalDict[latent_dim])
-        # error_increasing = True
-        # while error_increasing:  # Make sure losses are sufficiently decreasing
-        #     if latent_dim == latent_dims[0]:  # skip first loss
-        #         losses.append(evalDict[latent_dim])
-        #         error_increasing = False
+        losses = []
             
+        training_loss = []  
+        eval_loss = []
+        evalDict = {}
+
+
+        latent_dims = [8, 16, 24, 32, 40]
+        for latent_dim in latent_dims:
+            features = latent_dim
             
-        #     elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) < 4:
-        #         losses.append(evalDict[latent_dim])
-        #         error_increasing = False
-            
-        #     elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) > 4:
-        #         CNN(model_dict)
+            if latent_dim not in evalDict:
+                evalDict[latent_dim] = 0  
                 
-        if latent_dim == latent_dims[-1]: # Plot results after running the last latent dimension
-            # Graph results
-            plt.figure(subdomain)  # creates a new plt canvas
-            plt.plot(latent_dims, losses, marker='o')
-            plt.xticks(latent_dims)
-            
-            # Label loss if at least 3e-5 smaller than previous
-            yticks = []
-            yticks_labels = []
-            for index, loss in enumerate(losses):
-                if index == 0:
-                    yticks.append(losses[index])
-                    yticks_labels.append(str(round(losses[index], 8)))
-                elif (losses[index - 1] / losses[index]) >= 2:  # Label if at least 5x smaller than previous loss
-                    yticks.append(losses[index])
-                    yticks_labels.append(str(round(losses[index], 8)))
-            plt.yticks(yticks, yticks_labels)
-            
-            plt.xlabel('Latent Features')
-            plt.ylabel('Evaluation loss')
-            plt.title(f'Convlutional Autoencoder - 2D NSE - Subdomain {subdomain}')
-            plt.show()
+            CNN()
 
-            # plt.savefig(f'/Users/darinmomayezi/Documents/Research/GrigorievLab/Autoencoder/2D_NSE/Vorticity_single_period/Vorticity_subdomain{subdomain}_test/AE_2D_NSE_subdomain{subdomain}.png')
-    break
+            # losses.append(evalDict[latent_dim])
+        
+            error_increasing = True
+            while error_increasing:  # Make sure losses are sufficiently decreasing
+                if latent_dim == latent_dims[0]:  # skip first loss
+                    losses.append(evalDict[latent_dim])
+                    error_increasing = False
+                
+                
+                elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) < 1.5:
+                    losses.append(evalDict[latent_dim])
+                    error_increasing = False
+                
+                elif (evalDict[latent_dim] / evalDict[int(latent_dim - 8)]) > 1.5:
+                    CNN()
+                    
+            if latent_dim == latent_dims[-1]: # Plot results after running the last latent dimension
+                # Graph results
+                plt.figure(subdomain)  # creates a new plt canvas
+                plt.plot(latent_dims, losses, marker='o')
+                plt.xticks(latent_dims)
+                
+                # Label loss if at least 3e-5 smaller than previous
+                yticks = []
+                yticks_labels = []
+                for index, loss in enumerate(losses):
+                    if index == 0:
+                        yticks.append(losses[index])
+                        yticks_labels.append(str(round(losses[index], 8)))
+                    elif (losses[index - 1] / losses[index]) >= 2:  # Label if at least 5x smaller than previous loss
+                        yticks.append(losses[index])
+                        yticks_labels.append(str(round(losses[index], 8)))
+                plt.yticks(yticks, yticks_labels)
+                
+                plt.xlabel('Latent Features')
+                plt.ylabel('Evaluation loss')
+                plt.title(f'Convolutional Autoencoder - 2D NSE - Subdomain {subdomain}')
+                
+                print(losses)
+        break
+    
+final_dimensionality = []
+for subdomain, num_princ_comps in total_dimensionality.items():
+    final_dimensionality.append(num_princ_comps)
+print(final_dimensionality)
+plt.legend(final_dimensionality)
+plt.savefig(f'/Users/darinmomayezi/Desktop/AE_2D_NSE_subdomain{subdomain}_3.png')
+plt.show()
