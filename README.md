@@ -15,3 +15,12 @@ Below is a simple Autoencoder applied to time averaged numerical data of the 2D 
   alt="Alt text"
   title="Optional title"
   style="display: inline-block; margin: 0 auto; max-width: 100px">
+
+
+_______________________________________________________________
+Vorticity field
+<img
+  src="vorticity_images.gif"
+  alt="Alt text"
+  title="Optional title"
+  style="display: inline-block; margin: 0 auto; max-width: 100px">
