@@ -18,7 +18,7 @@ Below is a simple Autoencoder applied to time averaged numerical data of the 2D 
 
 
 _______________________________________________________________
-Vorticity field
+# Vorticity field
 <img
   src="vorticity_images.gif"
   alt="Alt text"
