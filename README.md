@@ -5,6 +5,7 @@ My main project is applying Autoencoders to the problem of modeling fine structu
 The question is do Autoencoders work in this way? Well, yes! They do seem to have promise in discovering models of physical systems. To motivate this let's consider a 1-D PDE whose solution is a simple sum of cosines
 $$Acos(ku) + Bcos(qu)$$
 $$u=x+ct, \text{   } c=\pi$$
+$$k << \frac{1}{dx}, \text{    } q >> \frac{1}{dx}$$
 
 This project started by reproducing the results produced by Graham and Linot who showed the dimensionality of the inertial manifold of the Kuramoto-Sivashinky system (https://arxiv.org/pdf/2109.00060.pdf).
 
