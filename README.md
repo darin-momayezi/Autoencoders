@@ -25,7 +25,7 @@ There are many situations in which you may expect solutions to consist of high a
   title="Sum"
   width="250" height="250">
 </p>
-We would expect an Autoencoder to learn the first and second components with just one dimensional latent spaces and the their sum with a two dimensional latent space. 
+We would expect an Autoencoder to learn the first and second components with just one dimensional latent spaces and their sum with a two dimensional latent space. 
 
 This project started by reproducing the results produced by Graham and Linot who showed the dimensionality of the inertial manifold of the Kuramoto-Sivashinky system (https://arxiv.org/pdf/2109.00060.pdf).
 
