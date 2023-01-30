@@ -12,17 +12,17 @@ There are many situations in which you may expect solutions to consist of high a
   src="images/high.png"
   alt="Alt text"
   title="Low Frequency"
-  width="200" height="200">
+  width="250" height="250">
 <img
   src="images/low.png"
   alt="Alt text"
   title="High Frequency"
-  style="display: inline-block; margin: 0 auto; max-width: 40px">
+  width="250" height="250">
 <img
   src="images/sum.png"
   alt="Alt text"
   title="Sum"
-  style="display: inline-block; margin: 0 auto; max-width: 40px">
+  width="250" height="250">
 We would expect an Autoencoder to learn the first and second components with just one dimensional latent spaces and the their sum with a two dimensional latent space. 
 
 This project started by reproducing the results produced by Graham and Linot who showed the dimensionality of the inertial manifold of the Kuramoto-Sivashinky system (https://arxiv.org/pdf/2109.00060.pdf).
