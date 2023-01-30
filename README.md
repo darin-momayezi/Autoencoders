@@ -11,12 +11,12 @@ There are many situations in which you may expect solutions to consist of high a
 <img
   src="images/high.png"
   alt="Alt text"
-  title="High Frequency"
-  style="display: inline-block; margin: 0 auto; max-width: 40px">
+  title="Low Frequency"
+  width="40", height="40">
 <img
   src="images/low.png"
   alt="Alt text"
-  title="Low Frequency"
+  title="High Frequency"
   style="display: inline-block; margin: 0 auto; max-width: 40px">
 <img
   src="images/sum.png"
