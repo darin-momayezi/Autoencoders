@@ -8,7 +8,7 @@ $$u=x+ct, \text{   } c=\pi$$
 $$k << \frac{1}{dx}, \text{    } q >> \frac{1}{dx}.$$
 
 There are many situations in which you may expect solutions to consist of high and low frequency components. The graphs of the high frequency component, the low frequency component, and their sum, respectively, are shown below.
-<p float="left">
+<p float="left" align="center">
 <img
   src="images/high.png"
   alt="Alt text"
