@@ -46,7 +46,7 @@ We would expect an Autoencoder to learn the first and second components with jus
   width="250" height="250">
 </p>
 
-This is exactly what we expected. For both the high and low frequency components the Autoencoder learned nothing past the first latent dimension while for their sum it learned nothing beyond the first two latent dimensions. In other words, the individual components are one dimensional and their sum in two dimensional as expected. <br/> <br/>
+This is exactly what we expected. For both the high and low frequency components the Autoencoder learned nothing past the first latent dimension while for their sum it learned nothing beyond the first two latent dimensions. In other words, the individual components are one dimensional and their sum is two dimensional as expected. <br/> <br/>
 Now, we know that the Autoencoder CAN learn this data with the proper amount of dimensions, but WHAT does it learn? Does it learn what a cosine is or does it find some abstract representation? Below is the plot of the latent space for the entire solution (i.e., the sum of the cosines).
 <p align="center">
 <img
@@ -71,7 +71,7 @@ We can see that there is some coupling between the components because this Autoe
   width="250" height="250">
 </p>
 
-This is a very encouraging result. If one were to only have the data and observe the latent space representation one could easily see that the data is the sum of two cosines. This provides strong motivation for applying Autoencoders to discovering models for more complicated systems. This work in using machine learning for model discovery may provide techniques for illuminating machine learning models in many domains and help increase trust and understanding, which are vital to responsible use of artificial intelligence.
+This is a very encouraging result. If one were to only have the data and observe the latent space representation one could easily see that the data is the sum of two cosines. This provides strong motivation for applying Autoencoders to discovering models for more complicated systems. This work in using machine learning for model discovery may provide techniques for illuminating machine learning models in many domains and help increase trust and understanding, which are vital to the responsible use of artificial intelligence.
 
 The current work is focused on the 2-D Navier Stokes equations and finding low dimensional representations of the fine structure. Autoencoders may also be useful for quantifying the separation between high dimensional and low dimensional structure. 
 
