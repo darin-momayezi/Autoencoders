@@ -7,8 +7,8 @@ $$Acos(ku) + Bcos(qu)$$
 $$u=x+ct, \text{   } c=\pi$$
 $$k << \frac{1}{dx}, \text{    } q >> \frac{1}{dx}.$$
 
-There are many situations in which you may expect solutions to consist of high and low frequency components. The graphs of the high frequency components, the low frequency component, and their sum, respectively, are shown below.
-We would expect an Autoencoder to learn the first component and second components with just one dimensional latent spaces and the their sum with a two dimensional latent space. 
+There are many situations in which you may expect solutions to consist of high and low frequency components. The graphs of the high frequency component, the low frequency component, and their sum, respectively, are shown below.
+We would expect an Autoencoder to learn the first and second components with just one dimensional latent spaces and the their sum with a two dimensional latent space. 
 
 This project started by reproducing the results produced by Graham and Linot who showed the dimensionality of the inertial manifold of the Kuramoto-Sivashinky system (https://arxiv.org/pdf/2109.00060.pdf).
 
