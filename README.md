@@ -12,7 +12,7 @@ There are many situations in which you may expect solutions to consist of high a
   src="images/high.png"
   alt="Alt text"
   title="Low Frequency"
-  width="80" height="80">
+  width="200" height="200">
 <img
   src="images/low.png"
   alt="Alt text"
