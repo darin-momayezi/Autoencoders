@@ -26,7 +26,7 @@ There are many situations in which you may expect solutions to consist of high a
   width="250" height="250">
 </p>
 
-We would expect an Autoencoder to learn the first and second components with just one dimensional latent spaces and their sum with a two dimensional latent space. 
+We would expect an Autoencoder to learn the first and second components with just one dimensional latent spaces and their sum with a two dimensional latent space. So, we train Autoencoders on each component with sparse data (i.e. imperfect resolution).
 
 <p float="left" align="center">
 <img
@@ -71,7 +71,7 @@ We can see that there is some coupling between the components because this Autoe
   width="250" height="250">
 </p>
 
-This is a very encouraging result. If one were to only have the data and observe the latent space representation one could easily see that the data is the sum of two cosines. This provides strong motivation for applying Autoencoders to discovering models for more complicated systems. This work in using machine learning for model discovery may provide techniques for illuminating machine learning models in many domains and help increase trust and understanding, which are vital to the responsible use of artificial intelligence.
+This is a very encouraging result. If one were to only have the data and observe the latent space representation one could easily see that the data is the sum of two cosines. Once this is known an application of the 2D Fourier Transform to the data would recover the Fourier modes with their coefficients and completely discover the model that produced this data. This example provides strong motivation for applying Autoencoders to discovering models for more complicated systems. Further work in using machine learning for model discovery may provide techniques for illuminating machine learning models in many domains and help increase trust and understanding, which are vital to the responsible use of artificial intelligence.
 
 The current work is focused on the 2-D Navier Stokes equations and finding low dimensional representations of the fine structure. Autoencoders may also be useful for quantifying the separation between high dimensional and low dimensional structure. 
 
