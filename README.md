@@ -1,6 +1,6 @@
 # Autoencoders
 This repository documents my reserach projects as an undergraduate in Dr. Roman Grigoriev's Non-Linear Dynamics and Chaos lab at Georgia Tech.
-My main project is applying Autoencoders to the problem of modeling fine structure dynamics in turbulent data. This is a well-posed problem because fine structure is both important and extremely expensive to simulate in detail. Autoencoders have proven to be effective in many areas for dimensionality reduction. Reduced dimensional modeling of fine structure in turbulent systems would cut the computational cost of accurate models and bring important dynamics into our understanding of turbulent systems. 
+I have focused on applying Autoencoders to model fine structure dynamics in turbulent data. This is a well-posed problem because fine structure is both important and extremely expensive to simulate in detail. While Autoencoders have proven to be effective in many areas for dimensionality reduction, no one currently knows how to apply them properly to learn the fine strcture dynamics of turbulent systems.  Reduced dimensional modeling of fine structure would cut the computational cost of accurate models and bring important dynamics into our understanding of turbulent systems. 
 
 The question is do Autoencoders work in this way? Well, yes! They do seem to have promise in discovering models of physical systems. To motivate this let's consider a 1-D PDE whose solution is a simple sum of cosines
 $$Acos(ku) + Bcos(qu)$$
@@ -26,7 +26,7 @@ There are many situations in which you may expect solutions to consist of high a
   width="250" height="250">
 </p>
 
-We would expect an Autoencoder to learn the first and second components with just one dimensional latent spaces and their sum with a two dimensional latent space. So, we train Autoencoders on each component with sparse data (i.e. imperfect resolution).
+We would expect an Autoencoder to learn the first and second components with just one dimensional latent spaces and their sum with a two dimensional latent space. So, we train Autoencoders on each component with sparse data.
 
 <p float="left" align="center">
 <img
@@ -46,7 +46,7 @@ We would expect an Autoencoder to learn the first and second components with jus
   width="250" height="250">
 </p>
 
-This is exactly what we expected. For both the high and low frequency components the Autoencoder learned nothing past the first latent dimension while for their sum it learned nothing beyond the first two latent dimensions. In other words, the individual components are one dimensional and their sum is two dimensional as expected. <br/> <br/>
+This is exactly what we expected. For both the high and low frequency components the Autoencoder learned nothing past the first latent dimension while for their sum it learned nothing beyond the second latent dimension. In other words, the individual components are one dimensional and their sum is two dimensional as expected. <br/> <br/>
 Now, we know that the Autoencoder CAN learn this data with the proper amount of dimensions, but WHAT does it learn? Does it learn what a cosine is or does it find some abstract representation? Below is the plot of the latent space for the entire solution (i.e., the sum of the cosines).
 <p align="center">
 <img
